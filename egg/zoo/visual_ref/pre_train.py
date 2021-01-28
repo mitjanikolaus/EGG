@@ -126,8 +126,7 @@ def main(params):
         val_losses = []
         for batch_idx, (images, captions, caption_lengths) in enumerate(dataloader):
             print_caption(captions[0], vocab)
-            # images, captions, sequence_lengths = images.to(device), captions.to(device), sequence_lengths.to(device)
-            optimizer.zero_grad()
+            images, captions, caption_lengths = images.to(device), captions.to(device), caption_lengths.to(device)
 
             output, decode_lengths = model.forward_test(images)
 
@@ -147,12 +146,12 @@ def main(params):
     for epoch in range(NUM_EPOCHS):
         losses = []
         for batch_idx, (images, captions, caption_lengths) in enumerate(train_loader):
-            # print_caption(captions[0], vocab)
-            # images, captions, sequence_lengths = images.to(device), captions.to(device), sequence_lengths.to(device)
-            optimizer.zero_grad()
+            images, captions, caption_lengths = images.to(device), captions.to(device), caption_lengths.to(device)
+
             output = model_image_captioning(images, captions, caption_lengths)
 
             loss = model_image_captioning.calc_loss(output, captions, caption_lengths)
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
