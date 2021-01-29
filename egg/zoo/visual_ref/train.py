@@ -20,7 +20,7 @@ from egg.core import ConsoleLogger, Callback, Interaction
 from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
 from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
     VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle
-from egg.zoo.visual_ref.pre_train import Vision
+from egg.zoo.visual_ref.train_image_captioning import Vision
 from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, DATASET_SIZE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

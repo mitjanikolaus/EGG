@@ -26,7 +26,7 @@ CHECKPOINT_PATH_VISION = os.path.join(Path.home(), "data/egg/visual_ref/checkpoi
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
 
 
-VAL_INTERVAL = 1
+VAL_INTERVAL = 100
 
 PRINT_SAMPLE_CAPTIONS = 10
 
