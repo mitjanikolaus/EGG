@@ -169,7 +169,7 @@ def main(params):
             loss.backward()
             optimizer.step()
 
-            if (batch_idix+1) % VAL_INTERVAL == 0:
+            if (batch_idx + 1) % VAL_INTERVAL == 0:
                 print(f"Batch {batch_idx}: train loss: {np.mean(losses)}")
                 val_loss = validate_model(model_image_captioning, val_images_loader)
                 if val_loss < best_val_loss:
