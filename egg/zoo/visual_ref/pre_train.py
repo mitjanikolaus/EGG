@@ -18,8 +18,6 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
-from torchvision.models import resnet50
 
 import egg.core as core
 from egg.zoo.visual_ref.dataset import CaptionDataset, pad_collate
@@ -27,6 +25,8 @@ from egg.zoo.visual_ref.models import Vision, ImageCaptioner
 from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+RANDOM_SEED = 1
 
 CHECKPOINT_PATH_VISION = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/vision.pt")
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
@@ -36,17 +36,29 @@ DATASET_SIZE = 60396
 
 NUM_EPOCHS = 10
 
-VAL_INTERVAL = 10
+VAL_INTERVAL = 100
+
+PRINT_SAMPLE_CAPTIONS = 10
 
 def print_caption(caption, vocab):
     words = [vocab.itos[word] for word in caption]
     print(" ".join(words))
 
-def print_model_output(output, vocab, num_captions=1):
-    print("Model output: ")
-    captions = torch.argmax(output, dim=1)
+def print_model_output(output, target_captions, vocab, num_captions=1):
+    captions_model = torch.argmax(output, dim=1)
     for i in range(num_captions):
-        print_caption(captions[i], vocab)
+        print("Target: ", end="")
+        print_caption(target_captions[i], vocab)
+        print("Model output: ", end="")
+        print_caption(captions_model[i], vocab)
+
+def print_sample_model_output(model, dataloader, vocab, num_captions=1):
+    images, captions, caption_lengths = next(iter(dataloader))
+
+    output, decode_lengths = model.forward_test(images)
+
+    print_model_output(output, captions, vocab, num_captions)
+
 
 
 def main(params):
@@ -55,11 +67,15 @@ def main(params):
 
     batch_size = opts.batch_size  # set via the CL arguments above
 
+    # create model checkpoint directory
+    if not os.path.exists(CHECKPOINT_PATH_IMAGE_CAPTIONING):
+        os.makedirs(CHECKPOINT_PATH_IMAGE_CAPTIONING)
+
     #TODO improve
     all_indices = list(range(DATASET_SIZE))
 
-    train_indices, test_indices = train_test_split(all_indices, test_size=0.1)
-    train_indices, val_indices = train_test_split(train_indices, test_size=0.1)
+    train_indices, test_indices = train_test_split(all_indices, test_size=0.1, random_state=RANDOM_SEED)
+    train_indices, val_indices = train_test_split(train_indices, test_size=0.1, random_state=RANDOM_SEED)
 
     train_loader = DataLoader(
         CaptionDataset(
@@ -123,14 +139,12 @@ def main(params):
     def validate_model(model, dataloader):
         print(f"EVAL")
         model.eval()
+
+        print_sample_model_output(model, dataloader, vocab, PRINT_SAMPLE_CAPTIONS)
+
         val_losses = []
         for batch_idx, (images, captions, caption_lengths) in enumerate(dataloader):
-            print_caption(captions[0], vocab)
-            images, captions, caption_lengths = images.to(device), captions.to(device), caption_lengths.to(device)
-
             output, decode_lengths = model.forward_test(images)
-
-            print_model_output(output, vocab)
 
             loss = model.calc_loss(output, captions, caption_lengths)
 
@@ -146,18 +160,16 @@ def main(params):
     for epoch in range(NUM_EPOCHS):
         losses = []
         for batch_idx, (images, captions, caption_lengths) in enumerate(train_loader):
-            images, captions, caption_lengths = images.to(device), captions.to(device), caption_lengths.to(device)
-
             output = model_image_captioning(images, captions, caption_lengths)
 
             loss = model_image_captioning.calc_loss(output, captions, caption_lengths)
+            losses.append(loss.mean().item())
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            losses.append(loss.mean().item())
-
-            if batch_idx % VAL_INTERVAL == 0:
+            if batch_idx+1 % VAL_INTERVAL == 0:
                 print(f"Batch {batch_idx}: train loss: {np.mean(losses)}")
                 val_loss = validate_model(model_image_captioning, val_images_loader)
                 if val_loss < best_val_loss:

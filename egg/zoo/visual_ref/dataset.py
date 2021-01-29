@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 import numpy as np
 
-from torchvision import datasets, transforms
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # These input-data-processing classes take input data from a text file and convert them to the format
 # appropriate for the recognition and discrimination games, so that they can be read by
@@ -160,4 +160,4 @@ def pad_collate(batch):
     sequence_lengths = torch.tensor([len(c) for c in captions])
     padded_captions = pad_sequence(captions, batch_first=True)
 
-    return images, padded_captions, sequence_lengths
+    return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
