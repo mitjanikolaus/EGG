@@ -7,31 +7,24 @@ import pickle
 from pathlib import Path
 import os
 
-from sklearn.model_selection import train_test_split
-
 import numpy as np
 
 import torch
 import torch.distributions
 import torch.utils.data
-from torch import nn
-from torch.nn import functional as F
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 
 import egg.core as core
 from egg.zoo.visual_ref.dataset import CaptionDataset, pad_collate
 from egg.zoo.visual_ref.models import Vision, ImageCaptioner
 from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN, \
-    DATASET_SIZE, DATA_PATH, RANDOM_SEED
+    DATA_PATH
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 CHECKPOINT_PATH_VISION = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/vision.pt")
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
 
-
-NUM_EPOCHS = 10
 
 VAL_INTERVAL = 1
 
@@ -55,7 +48,6 @@ def print_sample_model_output(model, dataloader, vocab, num_captions=1):
     output, decode_lengths = model.forward_test(images)
 
     print_model_output(output, captions, vocab, num_captions)
-
 
 
 def main(params):
@@ -144,7 +136,7 @@ def main(params):
         return val_loss
 
     best_val_loss = math.inf
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(opts.n_epochs):
         losses = []
         for batch_idx, (images, captions, caption_lengths) in enumerate(train_loader):
             output = model_image_captioning(images, captions, caption_lengths)
