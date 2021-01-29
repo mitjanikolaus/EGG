@@ -6,6 +6,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 import numpy as np
+from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -94,6 +95,78 @@ class CaptionDataset(Dataset):
     PyTorch Dataset that provides batches of images of a given split
     """
 
+    CAPTIONS_PER_IMAGE = 6
+
+    def __init__(
+        self,
+        data_folder,
+        features_filename,
+        captions_filename,
+        normalize=None,
+        features_scale_factor=1 / 255.0,
+    ):
+        """
+        :param data_folder: folder where data files are stored
+        :param features_filename: Filename of the image features file
+        :param normalize: PyTorch normalization transformation
+        :param features_scale_factor: Additional scale factor, applied before normalization
+        """
+        self.images = h5py.File(
+            os.path.join(data_folder, features_filename), "r"
+        )
+
+        self.features_scale_factor = features_scale_factor
+
+        # Load captions
+        with open(os.path.join(data_folder, captions_filename), "rb") as file:
+            self.captions = pickle.load(file)
+
+        # Set pytorch transformation pipeline
+        self.transform = normalize
+
+    def get_image_features(self, id):
+        image_data = self.images[str(id)][()]
+
+        # scale the features with given factor
+        image_data = image_data * self.features_scale_factor
+
+        image = torch.FloatTensor(image_data)
+        if self.transform:
+            image = self.transform(image)
+
+        return image
+
+    def __getitem__(self, i):
+        image_id = i // self.CAPTIONS_PER_IMAGE
+        caption_id = i % self.CAPTIONS_PER_IMAGE
+
+        image = self.get_image_features(image_id)
+
+        caption = self.captions[image_id][caption_id]
+        caption = torch.LongTensor(
+            caption
+        )
+
+        return image, caption
+
+    def __len__(self):
+        return len(self.images) * self.CAPTIONS_PER_IMAGE
+
+def pad_collate(batch):
+    images = torch.stack([s[0] for s in batch])
+    captions = [s[1] for s in batch]
+
+    sequence_lengths = torch.tensor([len(c) for c in captions])
+    padded_captions = pad_sequence(captions, batch_first=True)
+
+    return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
+
+
+class VisualRefCaptionDataset(Dataset):
+    """
+    PyTorch Dataset that provides sets of target and distractor images and captions
+    """
+
     def __init__(
         self,
         data_folder,
@@ -124,6 +197,7 @@ class CaptionDataset(Dataset):
         # Set pytorch transformation pipeline
         self.transform = normalize
 
+
     def get_image_features(self, id):
         image_data = self.images[id][()]
 
@@ -138,26 +212,17 @@ class CaptionDataset(Dataset):
 
     def __getitem__(self, i):
         # Convert index depending on the dataset split
-        i = self.data_indices[i]
+        image_id = self.data_indices[i]
 
-        image_id = self.captions[i]["image_id"]
         image = self.get_image_features(image_id)
 
-        caption = self.captions[i]["caption"]
-        caption = torch.LongTensor(
-            caption
+        captions = [caption["caption"] for caption in self.captions if caption["image_id"] == image_id]
+
+        captions = torch.LongTensor(
+            captions
         )
 
-        return image, caption
+        return image, captions
 
     def __len__(self):
         return len(self.data_indices)
-
-def pad_collate(batch):
-    images = torch.stack([s[0] for s in batch])
-    captions = [s[1] for s in batch]
-
-    sequence_lengths = torch.tensor([len(c) for c in captions])
-    padded_captions = pad_sequence(captions, batch_first=True)
-
-    return images.to(device), padded_captions.to(device), sequence_lengths.to(device)

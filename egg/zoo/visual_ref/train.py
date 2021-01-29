@@ -2,6 +2,9 @@
 
 import torch
 import torch.nn as nn
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
+
 import egg.core as core
 
 from torchvision import datasets, transforms
@@ -14,9 +17,11 @@ import numpy as np
 
 import egg.core as core
 from egg.core import ConsoleLogger, Callback, Interaction
-from egg.zoo.visual_ref.dataset import VisualRefDiscriDataset
-from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional
-from egg.zoo.visual_ref.pre_train import CHECKPOINT_PATH, Vision
+from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
+from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
+    VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle
+from egg.zoo.visual_ref.pre_train import Vision
+from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, DATASET_SIZE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -58,18 +63,52 @@ def main(params):
     # get pre-defined common line arguments (batch/vocab size, etc).
     # See egg/core/util.py for a list
 
-    kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
-    mnist_dataset_train = datasets.MNIST('./data', train=True, download=True,
-                   transform=transforms.ToTensor())
-    n_samples = 10000
-    dataset_train = VisualRefDiscriDataset(mnist_dataset_train, n_samples)
-    train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=opts.batch_size, shuffle=True, **kwargs)
+    # kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
+    # mnist_dataset_train = datasets.MNIST('./data', train=True, download=True,
+    #                transform=transforms.ToTensor())
+    # n_samples = 10000
+    # dataset_train = VisualRefCaptionDataset(mnist_dataset_train, n_samples)
+    # train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=opts.batch_size, shuffle=True, **kwargs)
 
-    mnist_dataset_test = datasets.MNIST('./data', train=False, download=True,
-                                         transform=transforms.ToTensor())
-    n_samples = 1000
-    dataset_test = VisualRefDiscriDataset(mnist_dataset_test, n_samples)
-    test_loader = torch.utils.data.DataLoader(dataset_test, batch_size=opts.batch_size, shuffle=True, **kwargs)
+    if opts.batch_size > 1:
+        raise NotImplementedError("Batch size greater than 1 not supported yet.")
+
+    # TODO improve splits
+    all_indices = list(range(DATASET_SIZE))
+
+    train_indices, test_indices = train_test_split(all_indices, test_size=0.1, random_state=RANDOM_SEED)
+    train_indices, val_indices = train_test_split(train_indices, test_size=0.1, random_state=RANDOM_SEED)
+
+    train_loader = DataLoader(
+        VisualRefCaptionDataset(
+            DATA_PATH,
+            IMAGES_FILENAME,
+            CAPTIONS_FILENAME,
+            train_indices,
+        ),
+        batch_size=opts.batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=False,
+    )
+    val_loader = DataLoader(
+        VisualRefCaptionDataset(
+            DATA_PATH,
+            IMAGES_FILENAME,
+            CAPTIONS_FILENAME,
+            val_indices,
+        ),
+        batch_size=opts.batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=False,
+    )
+
+    # mnist_dataset_test = datasets.MNIST('./data', train=False, download=True,
+    #                                      transform=transforms.ToTensor())
+    # n_samples = 1000
+    # dataset_test = VisualRefDiscriDataset(mnist_dataset_test, n_samples)
+    # test_loader = torch.utils.data.DataLoader(dataset_test, batch_size=opts.batch_size, shuffle=True, **kwargs)
 
     # TODO
     opts.sender_hidden = 1024 # TODO
@@ -86,20 +125,20 @@ def main(params):
     # TODO
     n_features = opts.sender_embedding
 
-    checkpoint_vision = torch.load(CHECKPOINT_PATH)
-    vision = Vision(n_features)
-    vision.load_state_dict(checkpoint_vision['model_state_dict'])
+    # checkpoint_vision = torch.load(CHECKPOINT_PATH)
+    # vision = Vision(n_features)
+    # vision.load_state_dict(checkpoint_vision['model_state_dict'])
 
-    sender = VisualRefSenderFunctional(vision=vision, n_hidden=opts.sender_embedding, n_features=n_features)
-    receiver = VisualRefDiscriReceiver(vision=vision, n_features=n_features, n_hidden=opts.receiver_hidden)
+    sender = VisualRefSpeakerDiscriminativeOracle(n_hidden=opts.sender_embedding, n_features=n_features)
+    # receiver = VisualRefListenerOracle(vision=vision, n_features=n_features, n_hidden=opts.receiver_hidden)
 
     sender = core.RnnSenderReinforce(sender, vocab_size=opts.vocab_size, embed_dim=opts.sender_embedding,
                                      hidden_size=opts.sender_hidden, cell=opts.sender_cell, max_len=opts.max_len)
-    receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
-                                             hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
+    # receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
+    #                                          hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
 
-    game = core.SenderReceiverRnnReinforce(sender, receiver, loss, sender_entropy_coeff=opts.sender_entropy_coeff,
-                                           receiver_entropy_coeff=0)
+    # game = core.SenderReceiverRnnReinforce(sender, receiver, loss, sender_entropy_coeff=opts.sender_entropy_coeff,
+    #                                        receiver_entropy_coeff=0)
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
     # core.PrintValidationEvents(n_epochs=1)
@@ -107,7 +146,7 @@ def main(params):
 
     optimizer = core.build_optimizer(game.parameters())
 
-    trainer = core.Trainer(game=game, optimizer=optimizer, train_data=train_loader, validation_data=test_loader,
+    trainer = core.Trainer(game=game, optimizer=optimizer, train_data=train_loader, validation_data=val_loader,
                            callbacks=callbacks)
 
     print("Starting training with opts: ")

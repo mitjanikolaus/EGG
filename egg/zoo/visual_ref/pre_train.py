@@ -22,21 +22,18 @@ from torch.utils.data import DataLoader
 import egg.core as core
 from egg.zoo.visual_ref.dataset import CaptionDataset, pad_collate
 from egg.zoo.visual_ref.models import Vision, ImageCaptioner
-from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN
+from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN, \
+    DATASET_SIZE, DATA_PATH, RANDOM_SEED
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-RANDOM_SEED = 1
 
 CHECKPOINT_PATH_VISION = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/vision.pt")
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
 
-DATA_PATH = os.path.expanduser("~/data/abstract_scenes/preprocessed/")
-DATASET_SIZE = 60396
 
 NUM_EPOCHS = 10
 
-VAL_INTERVAL = 100
+VAL_INTERVAL = 1
 
 PRINT_SAMPLE_CAPTIONS = 10
 
@@ -65,26 +62,17 @@ def main(params):
     # initialize the egg lib
     opts = core.init(params=params)
 
-    batch_size = opts.batch_size  # set via the CL arguments above
-
     # create model checkpoint directory
     if not os.path.exists(CHECKPOINT_PATH_IMAGE_CAPTIONING):
         os.makedirs(CHECKPOINT_PATH_IMAGE_CAPTIONING)
 
-    #TODO improve
-    all_indices = list(range(DATASET_SIZE))
-
-    train_indices, test_indices = train_test_split(all_indices, test_size=0.1, random_state=RANDOM_SEED)
-    train_indices, val_indices = train_test_split(train_indices, test_size=0.1, random_state=RANDOM_SEED)
-
     train_loader = DataLoader(
         CaptionDataset(
             DATA_PATH,
-            IMAGES_FILENAME,
-            CAPTIONS_FILENAME,
-            train_indices,
+            IMAGES_FILENAME["train"],
+            CAPTIONS_FILENAME["train"],
         ),
-        batch_size=batch_size,
+        batch_size=opts.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -93,11 +81,10 @@ def main(params):
     val_images_loader = torch.utils.data.DataLoader(
         CaptionDataset(
             DATA_PATH,
-            IMAGES_FILENAME,
-            CAPTIONS_FILENAME,
-            val_indices,
+            IMAGES_FILENAME["val"],
+            CAPTIONS_FILENAME["val"],
         ),
-        batch_size=batch_size,
+        batch_size=opts.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -169,7 +156,7 @@ def main(params):
             loss.backward()
             optimizer.step()
 
-            if (batch_idx + 1) % VAL_INTERVAL == 0:
+            if batch_idx % VAL_INTERVAL == 0:
                 print(f"Batch {batch_idx}: train loss: {np.mean(losses)}")
                 val_loss = validate_model(model_image_captioning, val_images_loader)
                 if val_loss < best_val_loss:
@@ -181,7 +168,6 @@ def main(params):
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_model(model_image_captioning, optimizer, best_val_loss, epoch)
-
 
     core.close()
 

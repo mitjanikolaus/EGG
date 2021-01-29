@@ -212,3 +212,48 @@ class VisualRefSenderFunctional(nn.Module):
         # out: sender RNN init hidden state
         return out
 
+
+class VisualRefSpeakerDiscriminativeOracle(nn.Module):
+    def __init__(self, vision, n_hidden, n_features):
+        super(VisualRefSpeakerDiscriminativeOracle, self).__init__()
+        self.fc = nn.Linear(n_hidden, n_features)
+        self.vision = vision
+
+    def forward(self, x):
+        # input: (batch_size, 2, 1, 28, 28)
+        targets = x[:, 0]
+        distractors = x[:, 1]
+        with torch.no_grad():
+            emb_targets = self.vision(targets)
+            emb_distractors = self.vision(distractors)
+
+        emb_targets = self.fc(emb_targets)
+        emb_distractors = self.fc(emb_distractors)
+
+        out = torch.hstack([emb_targets, emb_distractors])
+        # out: sender RNN init hidden state
+        return out
+
+class VisualRefListenerOracle(nn.Module):
+    def __init__(self, vision, n_features, n_hidden):
+        super(VisualRefListenerOracle, self).__init__()
+        self.vision = vision
+        self.fc1 = nn.Linear(n_hidden, n_features)
+
+        self.fc2 = nn.Linear(n_features, n_hidden)
+
+    def forward(self, x, _input):
+        # x: receiver RNN hidden output
+        targets = _input[:, 0]
+        distractors = _input[:, 1]
+        with torch.no_grad():
+            emb_targets = self.vision(targets)
+            emb_distractors = self.vision(distractors)
+        emb_targets = self.fc1(emb_targets)
+        emb_distractors = self.fc1(emb_distractors)
+
+        stacked = torch.stack([emb_targets, emb_distractors], dim=1)
+
+        # TODO correct like this?
+        dots = torch.matmul(stacked, torch.unsqueeze(x, dim=-1))
+        return dots.squeeze()

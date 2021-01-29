@@ -13,15 +13,20 @@ import matplotlib.pyplot as plt
 
 import h5py
 import nltk
+from sklearn.model_selection import train_test_split
 from torchtext.vocab import Vocab
 from tqdm import tqdm
 
 nltk.download("punkt")
 
 VOCAB_FILENAME = "vocab.p"
-IMAGES_FILENAME = "images.hdf5"
-CAPTIONS_FILENAME = "captions.p"
+IMAGES_FILENAME = {"train": "images_train.hdf5", "val": "images_val.hdf5", "test": "images_test.hdf5"}
+CAPTIONS_FILENAME = {"train": "captions_train.p", "val": "captions_val.p", "test": "captions_test.p"}
 
+RANDOM_SEED = 1
+
+DATA_PATH = os.path.expanduser("~/data/abstract_scenes/preprocessed/")
+DATASET_SIZE = 10020
 
 def encode_caption(caption, vocab):
     return (
@@ -29,6 +34,9 @@ def encode_caption(caption, vocab):
         + [vocab.stoi[word] for word in caption]
         + [vocab.stoi[TOKEN_END]]
     )
+
+def encode_captions(captions, vocab):
+    return [encode_caption(caption, vocab) for caption in captions]
 
 MAX_CAPTION_LEN = 25
 TOKEN_PADDING = "<pad>"
@@ -45,7 +53,6 @@ def preprocess_images_and_captions(
     vocabulary_size,
 ):
     images = []
-    captions = []
     word_freq = Counter()
 
     images_folder = os.path.join(dataset_folder, "RenderedScenes")
@@ -62,6 +69,9 @@ def preprocess_images_and_captions(
     captions_file_1 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences1_10020.txt")
     captions_file_2 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences2_10020.txt")
 
+    captions = {}
+    for image_id in range(DATASET_SIZE):
+        captions[image_id] = []
     for captions_file in [captions_file_1, captions_file_2]:
         with open(captions_file) as file:
             for line in file:
@@ -86,11 +96,7 @@ def preprocess_images_and_captions(
 
                     word_freq.update(caption)
 
-                    captions.append({
-                        "image_id": image_id,
-                        "caption_id": caption_id,
-                        "caption": caption,
-                    })
+                    captions[int(image_id)].append(caption)
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -106,25 +112,34 @@ def preprocess_images_and_captions(
     with open(vocab_path, "wb") as file:
         pickle.dump(vocab, file)
 
-    # Create hdf5 file and dataset for the images
-    images_dataset_path = os.path.join(output_folder, IMAGES_FILENAME)
-    print("Creating image dataset at {}".format(images_dataset_path))
-    with h5py.File(images_dataset_path, "a") as h5py_file:
-        for img_id, img in tqdm(enumerate(images)):
-            # Read image and save it to hdf5 file
-            h5py_file.create_dataset(
-                str(img_id), (3, 400, 500), dtype="uint8", data=img
-            )
+    # Encode the captions using the vocab
+    captions = {id: encode_captions(captions_image, vocab) for id, captions_image in captions.items()}
 
-    # Encode captions
-    for caption in captions:
-        caption["caption"] = encode_caption(caption["caption"], vocab)
+    # Create dataset splits
+    all_indices = list(range(DATASET_SIZE))
+    indices = {}
+    indices["train"], indices["test"] = train_test_split(all_indices, test_size=0.1, random_state=RANDOM_SEED)
+    indices["train"], indices["val"] = train_test_split(indices["train"], test_size=0.1, random_state=RANDOM_SEED)
 
-    # Save captions
-    captions_path = os.path.join(output_folder, CAPTIONS_FILENAME)
-    print("Saving captions to {}".format(captions_path))
-    with open(captions_path, "wb") as file:
-        pickle.dump(captions, file)
+    for split in ["train", "val", "test"]:
+        images_split = [images[i] for i in indices[split]]
+        captions_split = {image_id: captions[old_id] for image_id, old_id in enumerate(indices[split])}
+
+        # Create hdf5 file and dataset for the images
+        images_dataset_path = os.path.join(output_folder, IMAGES_FILENAME[split])
+        print("Creating image dataset at {}".format(images_dataset_path))
+        with h5py.File(images_dataset_path, "a") as h5py_file:
+            for img_id, img in tqdm(enumerate(images_split)):
+                # Read image and save it to hdf5 file
+                h5py_file.create_dataset(
+                    str(img_id), (3, 400, 500), dtype="uint8", data=img
+                )
+
+        # Save captions
+        captions_path = os.path.join(output_folder, CAPTIONS_FILENAME[split])
+        print("Saving captions to {}".format(captions_path))
+        with open(captions_path, "wb") as file:
+            pickle.dump(captions_split, file)
 
 
 def check_args(args):
@@ -137,7 +152,7 @@ def check_args(args):
     parser.add_argument(
         "--output-folder",
         help="Folder in which the preprocessed data should be stored",
-        default=os.path.expanduser("~/data/abstract_scenes/preprocessed/"),
+        default=DATA_PATH,
     )
     parser.add_argument(
         "--vocabulary-size",
