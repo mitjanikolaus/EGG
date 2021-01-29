@@ -75,7 +75,7 @@ class ImageCaptioner(nn.Module):
         return output
 
 
-    def forward_test(self, images):
+    def forward_greedy_decode(self, images):
         """ Forward propagation at test time (no teacher forcing)."""
         image_features = self.visual_encoder(images)
         batch_size = images.shape[0]
