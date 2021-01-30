@@ -15,10 +15,11 @@ import torch.utils.data
 from torch.utils.data import DataLoader
 
 import egg.core as core
-from egg.zoo.visual_ref.dataset import CaptionDataset, pad_collate
+from egg.zoo.visual_ref.dataset import CaptionDataset
 from egg.zoo.visual_ref.models import Vision, ImageCaptioner
 from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN, \
     DATA_PATH
+from egg.zoo.visual_ref.utils import print_caption
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -29,10 +30,6 @@ CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_re
 VAL_INTERVAL = 100
 
 PRINT_SAMPLE_CAPTIONS = 10
-
-def print_caption(caption, vocab):
-    words = [vocab.itos[word] for word in caption]
-    print(" ".join(words))
 
 def print_model_output(output, target_captions, vocab, num_captions=1):
     captions_model = torch.argmax(output, dim=1)
@@ -68,7 +65,7 @@ def main(params):
         shuffle=True,
         num_workers=0,
         pin_memory=False,
-        collate_fn=pad_collate,
+        collate_fn=CaptionDataset.pad_collate,
     )
     val_images_loader = torch.utils.data.DataLoader(
         CaptionDataset(
@@ -80,7 +77,7 @@ def main(params):
         shuffle=True,
         num_workers=0,
         pin_memory=False,
-        collate_fn=pad_collate,
+        collate_fn=CaptionDataset.pad_collate,
     )
 
     vocab_path = os.path.join(DATA_PATH, VOCAB_FILENAME)

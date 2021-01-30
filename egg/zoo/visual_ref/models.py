@@ -1,6 +1,9 @@
+import os
+import pickle
+
 import torch.nn as nn
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from torchvision.models import resnet50
 
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
@@ -214,46 +217,74 @@ class VisualRefSenderFunctional(nn.Module):
 
 
 class VisualRefSpeakerDiscriminativeOracle(nn.Module):
-    def __init__(self, vision, n_hidden, n_features):
+    def __init__(self, data_folder, captions_filename):
         super(VisualRefSpeakerDiscriminativeOracle, self).__init__()
-        self.fc = nn.Linear(n_hidden, n_features)
-        self.vision = vision
 
-    def forward(self, x):
-        # input: (batch_size, 2, 1, 28, 28)
-        targets = x[:, 0]
-        distractors = x[:, 1]
-        with torch.no_grad():
-            emb_targets = self.vision(targets)
-            emb_distractors = self.vision(distractors)
+        # Load captions
+        with open(os.path.join(data_folder, captions_filename["train"]), "rb") as file:
+            self.captions_train = pickle.load(file)
 
-        emb_targets = self.fc(emb_targets)
-        emb_distractors = self.fc(emb_distractors)
+        with open(os.path.join(data_folder, captions_filename["val"]), "rb") as file:
+            self.captions_val = pickle.load(file)
 
-        out = torch.hstack([emb_targets, emb_distractors])
+        with open(os.path.join(data_folder, captions_filename["test"]), "rb") as file:
+            self.captions_test = pickle.load(file)
+
+
+    def forward(self, input):
+        # input: target_image, distractor_image
+        target_image, distractor_image, target_image_id, distractor_image_id = input
+
+        #TODO: choose best caption
+        output_captions = [self.captions_train[int(i)][0] for i in target_image_id]
+
+        # append end of message token
+        # TODO: currently overlap with padding
+        for caption in output_captions:
+            caption.append(0)
+
+        # Transform lists to tensors
+        output_captions = [torch.tensor(caption) for caption in output_captions]
+
+        # Pad all captions in batch to equal length
+        output_captions = pad_sequence(output_captions, batch_first=True)
+
         # out: sender RNN init hidden state
-        return out
+        # out: sequence, logits, entropy
+        return output_captions, None, None
 
 class VisualRefListenerOracle(nn.Module):
-    def __init__(self, vision, n_features, n_hidden):
+    def __init__(self, n_features, n_hidden, fine_tune_resnet=False):
         super(VisualRefListenerOracle, self).__init__()
-        self.vision = vision
-        self.fc1 = nn.Linear(n_hidden, n_features)
+        resnet = resnet50(pretrained=True)
 
+        if not fine_tune_resnet:
+            for param in resnet.parameters():
+                param.requires_grad = False
+
+        modules = list(resnet.children())[:-1]
+        self.resnet = nn.Sequential(*modules)
+
+        self.fc1 = nn.Linear(resnet.fc.in_features, n_features)
         self.fc2 = nn.Linear(n_features, n_hidden)
 
-    def forward(self, x, _input):
-        # x: receiver RNN hidden output
-        targets = _input[:, 0]
-        distractors = _input[:, 1]
-        with torch.no_grad():
-            emb_targets = self.vision(targets)
-            emb_distractors = self.vision(distractors)
-        emb_targets = self.fc1(emb_targets)
-        emb_distractors = self.fc1(emb_distractors)
+    def forward(self, rnn_out, receiver_input):
+        batch_size = receiver_input[0].shape[0]
 
-        stacked = torch.stack([emb_targets, emb_distractors], dim=1)
+        images_1, images_2 = receiver_input
+
+        emb_1 = self.resnet(images_1)
+        emb_1 = emb_1.view(emb_1.size(0), -1)
+        emb_1 = self.fc1(emb_1)
+        emb_1 = self.fc2(emb_1)
+
+        emb_2 = self.resnet(images_2)
+        emb_2 = emb_2.view(emb_2.size(0), -1)
+        emb_2 = self.fc1(emb_2)
+        emb_2 = self.fc2(emb_2)
+
+        stacked = torch.stack([emb_1, emb_2], dim=1)
 
         # TODO correct like this?
-        dots = torch.matmul(stacked, torch.unsqueeze(x, dim=-1))
-        return dots.squeeze()
+        dots = torch.matmul(stacked, torch.unsqueeze(rnn_out, dim=-1))
+        return dots.view(batch_size, -1)

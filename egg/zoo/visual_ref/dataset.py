@@ -8,6 +8,9 @@ from torch.utils.data import Dataset
 import numpy as np
 from tqdm import tqdm
 
+from egg.zoo.visual_ref.preprocess import DATA_PATH, VOCAB_FILENAME
+from egg.zoo.visual_ref.utils import print_caption, show_image
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # These input-data-processing classes take input data from a text file and convert them to the format
@@ -152,14 +155,14 @@ class CaptionDataset(Dataset):
     def __len__(self):
         return len(self.images) * self.CAPTIONS_PER_IMAGE
 
-def pad_collate(batch):
-    images = torch.stack([s[0] for s in batch])
-    captions = [s[1] for s in batch]
+    def pad_collate(batch):
+        images = torch.stack([s[0] for s in batch])
+        captions = [s[1] for s in batch]
 
-    sequence_lengths = torch.tensor([len(c) for c in captions])
-    padded_captions = pad_sequence(captions, batch_first=True)
+        sequence_lengths = torch.tensor([len(c) for c in captions])
+        padded_captions = pad_sequence(captions, batch_first=True)
 
-    return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
+        return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
 
 
 class VisualRefCaptionDataset(Dataset):
@@ -172,7 +175,6 @@ class VisualRefCaptionDataset(Dataset):
         data_folder,
         features_filename,
         captions_filename,
-        data_indices,
         normalize=None,
         features_scale_factor=1 / 255.0,
     ):
@@ -187,7 +189,6 @@ class VisualRefCaptionDataset(Dataset):
             os.path.join(data_folder, features_filename), "r"
         )
 
-        self.data_indices = data_indices
         self.features_scale_factor = features_scale_factor
 
         # Load captions
@@ -197,9 +198,14 @@ class VisualRefCaptionDataset(Dataset):
         # Set pytorch transformation pipeline
         self.transform = normalize
 
+        self.sample_image_ids = []
+        for i in range(len(self.images)):
+            for j in range(len(self.images)):
+                self.sample_image_ids.append((i, j))
+
 
     def get_image_features(self, id):
-        image_data = self.images[id][()]
+        image_data = self.images[str(id)][()]
 
         # scale the features with given factor
         image_data = image_data * self.features_scale_factor
@@ -211,18 +217,39 @@ class VisualRefCaptionDataset(Dataset):
         return image
 
     def __getitem__(self, i):
-        # Convert index depending on the dataset split
-        image_id = self.data_indices[i]
+        target_image_id, distractor_image_id = self.sample_image_ids[i]
 
-        image = self.get_image_features(image_id)
+        target_image = self.get_image_features(target_image_id)
+        distractor_image = self.get_image_features(distractor_image_id)
 
-        captions = [caption["caption"] for caption in self.captions if caption["image_id"] == image_id]
+        # target_captions = self.captions[target_image_id]
+        # distractor_captions = self.captions[distractor_image_id]
 
-        captions = torch.LongTensor(
-            captions
-        )
+        # The sender always gets the target first
+        sender_input = target_image, distractor_image, target_image_id, distractor_image_id #, target_captions, distractor_captions
+        #torch.stack([target_image, distractor_image]),
 
-        return image, captions
+        # The receiver gets target and distractor in random order
+        target_position = np.random.choice(2)
+        if target_position == 0:
+            receiver_input = target_image, distractor_image
+        else:
+            receiver_input = distractor_image, target_image
+        target_label = target_position
+
+        return sender_input, target_label, receiver_input
+
 
     def __len__(self):
-        return len(self.data_indices)
+        return len(self.images) ** 2
+
+    # def pad_collate(batch):
+    #     sender_inputs = [s[0] for s in batch]
+    #     target_labels = [s[1] for s in batch]
+    #     receiver_inputs = [s[2] for s in batch]
+    #
+    #     sequence_lengths = torch.tensor([len(c) for c in captions])
+    #     padded_captions = pad_sequence(captions, batch_first=True)
+    #
+    #     return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
+
