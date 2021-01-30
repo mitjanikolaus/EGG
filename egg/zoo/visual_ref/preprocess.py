@@ -56,15 +56,18 @@ def preprocess_images_and_captions(
     word_freq = Counter()
 
     images_folder = os.path.join(dataset_folder, "RenderedScenes")
-    for img_filename in tqdm(os.listdir(images_folder)):
-        img_path = os.path.join(images_folder, img_filename)
-        img = imageio.imread(img_path)
+    for scene_id in tqdm(range(1002)):
+        for image_scene_id in range(10):
+            img_filename = f"Scene{scene_id}_{image_scene_id}.png"
+            img_path = os.path.join(images_folder, img_filename)
 
-        # discard transparency channel
-        img = img[..., :3]
+            img = imageio.imread(img_path)
 
-        # show_image(img)
-        images.append(img)
+            # discard transparency channel
+            img = img[..., :3]
+
+            # show_image(img)
+            images.append(img)
 
     captions_file_1 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences1_10020.txt")
     captions_file_2 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences2_10020.txt")
