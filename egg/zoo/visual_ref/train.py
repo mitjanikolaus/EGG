@@ -18,7 +18,7 @@ import random
 import numpy as np
 
 import egg.core as core
-from egg.core import ConsoleLogger, Callback, Interaction
+from egg.core import ConsoleLogger, Callback, Interaction, LoggingStrategy
 from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
 from egg.zoo.visual_ref.game import OracleSenderReceiverRnnReinforce
 from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
@@ -26,7 +26,7 @@ from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFu
 from egg.zoo.visual_ref.train_image_captioning import Vision
 from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, DATASET_SIZE, RANDOM_SEED, \
     VOCAB_FILENAME
-from egg.zoo.visual_ref.utils import decode_caption
+from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,8 +40,12 @@ class PrintDebugEvents(Callback):
         with open(vocab_path, "rb") as file:
             self.vocab = pickle.load(file)
 
+        self.train_loss = 0
+        self.train_accuracies = 0
+
     def print_sample_interactions(self, interaction_logs, num_interactions=5):
         for z in range(num_interactions):
+            # TODO: load images from image IDs
             image_0 = interaction_logs.receiver_input[0][z]
             image_1 = interaction_logs.receiver_input[1][z]
 
@@ -66,9 +70,20 @@ class PrintDebugEvents(Callback):
     def on_batch_end(
             self, interaction_logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
+        if batch_id == 0:
+            self.train_loss = 0
+            self.train_accuracies = 0
+
+        self.train_loss += loss.detach()
+        self.train_accuracies += interaction_logs.aux['acc'].sum()
+
         if batch_id % LOG_INTERVAL == 0:
-            accuracy = interaction_logs.aux['acc'].mean()
-            print(f"Batch {batch_id}: loss: {loss} accuracy: {accuracy}")
+            num_batches = batch_id+1
+            mean_loss = self.train_loss / num_batches
+            batch_size = interaction_logs.aux['acc'].size()[0]
+            mean_acc = self.train_accuracies / (num_batches * batch_size)
+
+            print(f"Batch {batch_id}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}")
             # self.print_sample_interactions(interaction_logs)
 
 
@@ -144,7 +159,11 @@ def main(params):
     receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
                                              hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
 
-    game = OracleSenderReceiverRnnReinforce(sender, receiver, loss, receiver_entropy_coeff=0)
+    # use LoggingStrategy that stores image IDs
+    # train_logging_strategy = LoggingStrategy(store_sender_input=False, store_receiver_input=False)
+    train_logging_strategy = VisualRefLoggingStrategy()
+    game = OracleSenderReceiverRnnReinforce(sender, receiver, loss, receiver_entropy_coeff=0,
+                                            train_logging_strategy=train_logging_strategy)
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
     # core.PrintValidationEvents(n_epochs=1)

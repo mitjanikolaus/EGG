@@ -222,12 +222,8 @@ class VisualRefCaptionDataset(Dataset):
         target_image = self.get_image_features(target_image_id)
         distractor_image = self.get_image_features(distractor_image_id)
 
-        # target_captions = self.captions[target_image_id]
-        # distractor_captions = self.captions[distractor_image_id]
-
         # The sender always gets the target first
-        sender_input = target_image, distractor_image, target_image_id, distractor_image_id #, target_captions, distractor_captions
-        #torch.stack([target_image, distractor_image]),
+        sender_input = target_image, distractor_image, target_image_id, distractor_image_id
 
         # The receiver gets target and distractor in random order
         target_position = np.random.choice(2)
