@@ -67,8 +67,9 @@ class PrintDebugEvents(Callback):
             self, interaction_logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
         if batch_id % LOG_INTERVAL == 0:
-            print(f"Batch {batch_id}: loss: {loss}")
-            self.print_sample_interactions(interaction_logs)
+            accuracy = interaction_logs.aux['acc'].mean()
+            print(f"Batch {batch_id}: loss: {loss} accuracy: {accuracy}")
+            # self.print_sample_interactions(interaction_logs)
 
 
 def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
