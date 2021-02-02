@@ -402,16 +402,18 @@ class VisualRefListenerOracle(nn.Module):
         super(VisualRefListenerOracle, self).__init__()
         self.ranking_model = ranking_model
 
-    def forward(self, message, receiver_input, lengths):
+    def forward(self, messages, receiver_input, message_lengths):
         batch_size = receiver_input[0].shape[0]
 
         images_1, images_2 = receiver_input
 
-        image_1_embedded, message_embedded = self.ranking_model(images_1, message)
-        image_2_embedded, message_embedded = self.ranking_model(images_2, message)
+        images_1_embedded, messages_embedded = self.ranking_model(images_1, messages, message_lengths)
+        images_2_embedded, messages_embedded = self.ranking_model(images_2, messages, message_lengths)
 
-        stacked = torch.stack([image_1_embedded, image_2_embedded], dim=1)
+        stacked = torch.stack([images_1_embedded, images_2_embedded], dim=1)
 
         # TODO correct like this?
-        dots = torch.matmul(stacked, torch.unsqueeze(message_embedded, dim=-1))
-        return dots.view(batch_size, -1)
+        dots = torch.matmul(stacked, torch.unsqueeze(messages_embedded, dim=-1))
+
+        # out: sequence, logits, entropy
+        return dots.view(batch_size, -1),  None, None
