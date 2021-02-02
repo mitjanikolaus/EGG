@@ -25,6 +25,8 @@ CAPTIONS_FILENAME = {"train": "captions_train.p", "val": "captions_val.p", "test
 
 RANDOM_SEED = 1
 
+CAPTIONS_PER_IMAGE = 6
+
 DATA_PATH = os.path.expanduser("~/data/abstract_scenes/preprocessed/")
 DATASET_SIZE = 10020
 
@@ -127,6 +129,13 @@ def preprocess_images_and_captions(
     for split in ["train", "val", "test"]:
         images_split = [images[i] for i in indices[split]]
         captions_split = {image_id: captions[old_id] for image_id, old_id in enumerate(indices[split])}
+
+        # Discard superfluous captions
+        captions_split = {id: captions_image[:CAPTIONS_PER_IMAGE] for id, captions_image in captions_split.items()}
+
+        # Discard images with not enough captions
+        images_split = [image for i, image in enumerate(images_split) if len(captions_split[i]) == CAPTIONS_PER_IMAGE]
+        captions_split = {id: captions_image for id, captions_image in captions_split.items() if len(captions_image) == CAPTIONS_PER_IMAGE}
 
         # Create hdf5 file and dataset for the images
         images_dataset_path = os.path.join(output_folder, IMAGES_FILENAME[split])
