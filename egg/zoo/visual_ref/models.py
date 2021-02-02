@@ -388,7 +388,7 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
             caption.append(0)
 
         # Transform lists to tensors
-        output_captions = [torch.tensor(caption) for caption in output_captions]
+        output_captions = [torch.tensor(caption, device=device) for caption in output_captions]
 
         # Pad all captions in batch to equal length
         output_captions = pad_sequence(output_captions, batch_first=True)
