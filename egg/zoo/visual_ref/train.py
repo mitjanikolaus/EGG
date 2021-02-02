@@ -25,7 +25,7 @@ from egg.zoo.visual_ref.game import OracleSenderReceiverRnnSupervised
 from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
     VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle
 from egg.zoo.visual_ref.train_image_captioning import Vision
-from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, DATASET_SIZE, RANDOM_SEED, \
+from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, RANDOM_SEED, \
     VOCAB_FILENAME
 from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 

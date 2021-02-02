@@ -117,11 +117,18 @@ def preprocess_images_and_captions(
     with open(vocab_path, "wb") as file:
         pickle.dump(vocab, file)
 
+    # Discard images with not enough captions
+    images = {id: image for id, image in enumerate(images)}
+    images = {id: image for id, image in images.items() if len(captions[id]) == CAPTIONS_PER_IMAGE}
+    captions = [captions_image for id, captions_image in captions.items() if id in images.keys()]
+    images = list(images.values())
+    captions = {id: captions_image for id, captions_image in enumerate(captions)}
+
     # Encode the captions using the vocab
     captions = {id: encode_captions(captions_image, vocab) for id, captions_image in captions.items()}
 
     # Create dataset splits
-    all_indices = list(range(DATASET_SIZE))
+    all_indices = list(captions.keys())
     indices = {}
     indices["train"], indices["test"] = train_test_split(all_indices, test_size=0.1, random_state=RANDOM_SEED)
     indices["train"], indices["val"] = train_test_split(indices["train"], test_size=0.1, random_state=RANDOM_SEED)
@@ -129,13 +136,6 @@ def preprocess_images_and_captions(
     for split in ["train", "val", "test"]:
         images_split = [images[i] for i in indices[split]]
         captions_split = {image_id: captions[old_id] for image_id, old_id in enumerate(indices[split])}
-
-        # Discard superfluous captions
-        captions_split = {id: captions_image[:CAPTIONS_PER_IMAGE] for id, captions_image in captions_split.items()}
-
-        # Discard images with not enough captions
-        images_split = [image for i, image in enumerate(images_split) if len(captions_split[i]) == CAPTIONS_PER_IMAGE]
-        captions_split = {id: captions_image for id, captions_image in captions_split.items() if len(captions_image) == CAPTIONS_PER_IMAGE}
 
         # Create hdf5 file and dataset for the images
         images_dataset_path = os.path.join(output_folder, IMAGES_FILENAME[split])
