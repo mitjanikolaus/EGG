@@ -3,7 +3,7 @@ import pickle
 
 import torch.nn as nn
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence, pad_packed_sequence
 from torchvision.models import resnet50
 
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
@@ -60,20 +60,21 @@ class ImageCaptioner(nn.Module):
 
         hidden = self.init_hidden(batch_size)
 
-        # TODO should take into account caption length
         # cut off <eos> token as it's not needed to predict with this as input
         captions = captions[:, :-1]
+        caption_lengths = [l-1 for l in caption_lengths]
 
         embedded_captions = self.word_embedding(captions)
-        # packed_inputs = pack_padded_sequence(embedded_captions, sequence_lengths, enforce_sorted=False)
 
         image_features = image_features.unsqueeze(dim=1).repeat(1, embedded_captions.shape[1], 1)
 
         inputs = torch.cat((image_features, embedded_captions), dim=2)
-        lstm_out, hidden = self.lstm(inputs, hidden)
-        # output, _ = pad_packed_sequence(lstm_out)
+        packed_inputs = pack_padded_sequence(inputs, caption_lengths, enforce_sorted=False, batch_first=True)
 
-        output = self.fc(lstm_out)
+        lstm_out, hidden = self.lstm(packed_inputs, hidden)
+        output, _ = pad_packed_sequence(lstm_out, batch_first=True)
+
+        output = self.fc(output)
         output = output.transpose(1, 2)
         return output
 
