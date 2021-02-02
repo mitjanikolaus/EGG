@@ -187,5 +187,6 @@ def main(params):
 
 
 if __name__ == "__main__":
+    print("Start training on device: ", device)
     main(sys.argv[1:])
 

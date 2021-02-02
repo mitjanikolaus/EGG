@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import math
 import pickle
+import sys
 from pathlib import Path
 import os
 
@@ -86,10 +87,11 @@ def main(params):
         vocab = pickle.load(file)
 
     # TODO: embedding size for speaker is 1024 in paper
-    embedding_size = 512
+    word_embedding_size = 100
+    visual_embedding_size = 512
     lstm_hidden_size = 512
-    model_visual_encoder = Vision(embedding_size, fine_tune_resnet=False)
-    model_image_captioning = ImageCaptioner(model_visual_encoder, embedding_size, lstm_hidden_size, vocab, MAX_CAPTION_LEN)
+    model_visual_encoder = Vision(visual_embedding_size, fine_tune_resnet=False)
+    model_image_captioning = ImageCaptioner(model_visual_encoder, word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab, MAX_CAPTION_LEN)
 
     # uses command-line parameters we passed to core.init
     optimizer = core.build_optimizer(model_image_captioning.parameters())
@@ -165,6 +167,6 @@ def main(params):
 
 
 if __name__ == "__main__":
-    import sys
+    print("Start training on device: ", device)
     main(sys.argv[1:])
 

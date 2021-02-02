@@ -32,7 +32,7 @@ class Vision(nn.Module):
 
 
 class ImageCaptioner(nn.Module):
-    def __init__(self, visual_encoder, embedding_size, lstm_hidden_size, vocab, max_caption_length):
+    def __init__(self, visual_encoder, word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab, max_caption_length):
         super(ImageCaptioner, self).__init__()
         self.visual_encoder = visual_encoder
         self.lstm_hidden_size = lstm_hidden_size
@@ -41,9 +41,9 @@ class ImageCaptioner(nn.Module):
         self.vocab_size = len(vocab)
 
         #TODO no word embeddings used in paper?
-        self.word_embedding = nn.Embedding(self.vocab_size, embedding_size)
+        self.word_embedding = nn.Embedding(self.vocab_size, word_embedding_size)
 
-        self.lstm = nn.LSTM(input_size=embedding_size * 2, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=word_embedding_size + visual_embedding_size, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
         self.fc = nn.Linear(lstm_hidden_size, self.vocab_size)
 
         self.loss_function = torch.nn.CrossEntropyLoss(ignore_index=0)
