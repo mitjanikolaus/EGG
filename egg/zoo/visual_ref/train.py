@@ -1,6 +1,7 @@
 #  python -m egg.zoo.visual_ref.train --vocab_size=10 --n_epochs=15 --random_seed=7 --lr=1e-3 --batch_size=32 --optimizer=adam
 import os
 import pickle
+import sys
 
 import torch
 import torch.nn as nn
@@ -20,7 +21,7 @@ import numpy as np
 import egg.core as core
 from egg.core import ConsoleLogger, Callback, Interaction, LoggingStrategy
 from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
-from egg.zoo.visual_ref.game import OracleSenderReceiverRnnReinforce
+from egg.zoo.visual_ref.game import OracleSenderReceiverRnnSupervised
 from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
     VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle
 from egg.zoo.visual_ref.train_image_captioning import Vision
@@ -77,15 +78,16 @@ class PrintDebugEvents(Callback):
         self.train_loss += loss.detach()
         self.train_accuracies += interaction_logs.aux['acc'].sum()
 
-        if batch_id % LOG_INTERVAL == 0:
-            num_batches = batch_id+1
-            mean_loss = self.train_loss / num_batches
+        if (batch_id % LOG_INTERVAL == 0) and (batch_id != 0):
+            mean_loss = self.train_loss / LOG_INTERVAL
             batch_size = interaction_logs.aux['acc'].size()[0]
-            mean_acc = self.train_accuracies / (num_batches * batch_size)
+            mean_acc = self.train_accuracies / (LOG_INTERVAL * batch_size)
 
             print(f"Batch {batch_id}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}")
             # self.print_sample_interactions(interaction_logs)
 
+            self.train_loss = 0
+            self.train_accuracies = 0
 
 def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
     # in the discriminative case, accuracy is computed by comparing the index with highest score in Receiver output (a distribution of unnormalized
@@ -137,7 +139,8 @@ def main(params):
     opts.sender_embedding = 512 #???
     opts.receiver_embedding = 100 #???
     opts.receiver_hidden = 512 #???
-    opts.sender_entropy_coeff = 0.0 # entropy regularization
+    opts.sender_entropy_coeff = 0.0  # entropy regularization
+    opts.receiver_entropy_coeff = 0.0  # entropy regularization
     opts.sender_cell = "lstm"
     opts.receiver_cell = "lstm"
     opts.vocab_size = len(vocab)
@@ -162,8 +165,8 @@ def main(params):
     # use LoggingStrategy that stores image IDs
     # train_logging_strategy = LoggingStrategy(store_sender_input=False, store_receiver_input=False)
     train_logging_strategy = VisualRefLoggingStrategy()
-    game = OracleSenderReceiverRnnReinforce(sender, receiver, loss, receiver_entropy_coeff=0,
-                                            train_logging_strategy=train_logging_strategy)
+    game = OracleSenderReceiverRnnSupervised(sender, receiver, loss, receiver_entropy_coeff=opts.receiver_entropy_coeff,
+                                             train_logging_strategy=train_logging_strategy)
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
     # core.PrintValidationEvents(n_epochs=1)
@@ -184,6 +187,5 @@ def main(params):
 
 
 if __name__ == "__main__":
-    import sys
     main(sys.argv[1:])
 

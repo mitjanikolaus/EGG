@@ -233,7 +233,7 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
 
     def forward(self, input):
         # input: target_image, distractor_image
-        target_image, distractor_image, target_image_id, distractor_image_id = input
+        images, target_label, target_image_id, distractor_image_id = input
 
         #TODO: choose best caption
         output_captions = [self.captions_train[int(i)][0] for i in target_image_id]
@@ -276,6 +276,7 @@ class VisualRefListenerOracle(nn.Module):
         emb_1 = self.resnet(images_1)
         emb_1 = emb_1.view(emb_1.size(0), -1)
         emb_1 = self.fc1(emb_1)
+        # TODO add nonlinearity?
         emb_1 = self.fc2(emb_1)
 
         emb_2 = self.resnet(images_2)

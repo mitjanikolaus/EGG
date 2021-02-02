@@ -222,16 +222,16 @@ class VisualRefCaptionDataset(Dataset):
         target_image = self.get_image_features(target_image_id)
         distractor_image = self.get_image_features(distractor_image_id)
 
-        # The sender always gets the target first
-        sender_input = target_image, distractor_image, target_image_id, distractor_image_id
-
         # The receiver gets target and distractor in random order
         target_position = np.random.choice(2)
         if target_position == 0:
-            receiver_input = target_image, distractor_image
+            images = target_image, distractor_image
         else:
-            receiver_input = distractor_image, target_image
+            images = distractor_image, target_image
         target_label = target_position
+
+        sender_input = images, target_label, target_image_id, distractor_image_id
+        receiver_input = images
 
         return sender_input, target_label, receiver_input
 
