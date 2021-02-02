@@ -143,9 +143,6 @@ class CaptionDataset(Dataset):
         image_id = i // self.CAPTIONS_PER_IMAGE
         caption_id = i % self.CAPTIONS_PER_IMAGE
 
-        print("image id: ", image_id)
-        print("caption id: ", caption_id)
-
         image = self.get_image_features(image_id)
 
         caption = self.captions[image_id][caption_id]
