@@ -5,14 +5,151 @@ import torch.nn as nn
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence, pad_packed_sequence
 from torchvision.models import resnet50
+from torch.autograd import Variable
 
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class Vision(nn.Module):
-    def __init__(self, embedding_size, fine_tune_resnet=True):
-        super(Vision, self).__init__()
+
+class ContrastiveLoss(nn.Module):
+    """
+    Compute contrastive loss
+    """
+
+    def __init__(self, margin=0.2, max_violation=True):
+        super(ContrastiveLoss, self).__init__()
+
+        self.margin = margin
+        self.max_violation = max_violation
+
+    def forward(self, images_embedded, captions_embedded):
+        # compute image-caption score matrix
+        scores = cosine_sim(images_embedded, captions_embedded)
+        diagonal = scores.diag().view(images_embedded.size(0), 1)
+        d1 = diagonal.expand_as(scores)
+        d2 = diagonal.t().expand_as(scores)
+
+        # compare every diagonal score to scores in its column
+        # caption retrieval
+        cost_s = (self.margin + scores - d1).clamp(min=0)
+        # compare every diagonal score to scores in its row
+        # image retrieval
+        cost_im = (self.margin + scores - d2).clamp(min=0)
+
+        # clear diagonals
+        mask = torch.eye(scores.size(0)) > 0.5
+        I = Variable(mask).to(device)
+        cost_s = cost_s.masked_fill_(I, 0)
+        cost_im = cost_im.masked_fill_(I, 0)
+
+        # keep the maximum violating negative for each query
+        if self.max_violation:
+            cost_s = cost_s.max(1)[0]
+            cost_im = cost_im.max(0)[0]
+
+        # Sum up caption retrieval and image retrieval loss
+        sum_of_losses = cost_s.sum() + cost_im.sum()
+
+        # Normalize loss by batch size
+        normalized_loss = sum_of_losses / images_embedded.size(0)
+
+        return normalized_loss
+
+
+def cosine_sim(images_embedded, captions_embedded):
+    """Cosine similarity between all the image and sentence pairs
+    """
+    return images_embedded.mm(captions_embedded.t())
+
+
+class ImageSentenceRanker(nn.Module):
+    def __init__(self, word_embedding_size, joint_embeddings_size, lstm_hidden_size, vocab_size, fine_tune_resnet=True):
+        super(ImageSentenceRanker, self).__init__()
+        self.image_embedding = ImageEmbedding(
+            joint_embeddings_size, fine_tune_resnet
+        )
+        self.caption_embedding = nn.Linear(
+            lstm_hidden_size,
+            joint_embeddings_size,
+        )
+
+        #TODO no word embeddings used in paper?
+        self.word_embedding = nn.Embedding(vocab_size, word_embedding_size)
+
+        self.language_encoding_lstm = LanguageEncodingLSTM(
+            word_embedding_size,
+            lstm_hidden_size,
+        )
+
+        self.lstm_hidden_size = lstm_hidden_size
+
+        self.loss = ContrastiveLoss()
+
+    def embed_captions(self, captions, decode_lengths):
+        # Initialize LSTM state
+        batch_size = captions.size(0)
+        h_lan_enc, c_lan_enc = self.language_encoding_lstm.init_state(batch_size)
+
+        # TODO use packed sequences
+
+        # Tensor to store hidden activations
+        lang_enc_hidden_activations = torch.zeros(
+            (batch_size, self.lstm_hidden_size), device=device
+        )
+
+        for t in range(max(decode_lengths)):
+            prev_words_embedded = self.word_embedding(captions[:, t])
+
+            h_lan_enc, c_lan_enc = self.language_encoding_lstm(
+                h_lan_enc, c_lan_enc, prev_words_embedded
+            )
+
+            lang_enc_hidden_activations[decode_lengths == t + 1] = h_lan_enc[
+                decode_lengths == t + 1
+            ]
+
+        captions_embedded = self.caption_embedding(lang_enc_hidden_activations)
+        captions_embedded = l2_norm(captions_embedded)
+        return captions_embedded
+
+    def forward(self, encoder_output, captions, caption_lengths):
+        """
+        Forward propagation for the ranking task.
+        """
+        images_embedded = self.image_embedding(encoder_output)
+        captions_embedded = self.embed_captions(captions, caption_lengths)
+
+        return images_embedded, captions_embedded
+
+
+class LanguageEncodingLSTM(nn.Module):
+    def __init__(self, word_embeddings_size, hidden_size):
+        super(LanguageEncodingLSTM, self).__init__()
+        self.lstm_cell = nn.LSTMCell(word_embeddings_size, hidden_size)
+
+    def forward(self, h, c, prev_words_embedded):
+        h_out, c_out = self.lstm_cell(prev_words_embedded, (h, c))
+        return h_out, c_out
+
+    def init_state(self, batch_size):
+        h = torch.zeros((batch_size, self.lstm_cell.hidden_size), device=device)
+        c = torch.zeros((batch_size, self.lstm_cell.hidden_size), device=device)
+        return [h, c]
+
+
+def l2_norm(X):
+    """L2-normalize columns of X
+    """
+    norm = torch.pow(X, 2).sum(dim=1, keepdim=True).sqrt()
+    X = torch.div(X, norm)
+    return X
+
+
+class ImageEmbedding(nn.Module):
+    def __init__(self, joint_embeddings_size, fine_tune_resnet):
+        super(ImageEmbedding, self).__init__()
+
         resnet = resnet50(pretrained=True)
 
         if not fine_tune_resnet:
@@ -22,19 +159,31 @@ class Vision(nn.Module):
         modules = list(resnet.children())[:-1]
         self.resnet = nn.Sequential(*modules)
 
-        self.embed = nn.Linear(resnet.fc.in_features, embedding_size)
+        self.embed = nn.Linear(resnet.fc.in_features, joint_embeddings_size)
 
-    def forward(self, x):
-        features = self.resnet(x)
-        features = features.view(features.size(0), -1)
-        features = self.embed(features)
-        return features
+    def forward(self, images):
+        images_embedded = self.resnet(images)
+        images_embedded = self.embed(images_embedded.squeeze())
+
+        return images_embedded
 
 
 class ImageCaptioner(nn.Module):
-    def __init__(self, visual_encoder, word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab, max_caption_length):
+    def __init__(self, word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab, max_caption_length,
+                 fine_tune_resnet=True):
         super(ImageCaptioner, self).__init__()
-        self.visual_encoder = visual_encoder
+
+        resnet = resnet50(pretrained=True)
+
+        if not fine_tune_resnet:
+            for param in resnet.parameters():
+                param.requires_grad = False
+
+        modules = list(resnet.children())[:-1]
+        self.resnet = nn.Sequential(*modules)
+
+        self.embed = nn.Linear(resnet.fc.in_features, visual_embedding_size)
+
         self.lstm_hidden_size = lstm_hidden_size
 
         self.vocab = vocab
@@ -55,7 +204,10 @@ class ImageCaptioner(nn.Module):
                 torch.zeros(1, batch_size, self.lstm_hidden_size).to(device))
 
     def forward(self, images, captions, caption_lengths):
-        image_features = self.visual_encoder(images)
+        image_features = self.resnet(images)
+        image_features = image_features.view(image_features.size(0), -1)
+        image_features = self.embed(image_features)
+
         batch_size = images.shape[0]
 
         hidden = self.init_hidden(batch_size)
@@ -81,7 +233,10 @@ class ImageCaptioner(nn.Module):
 
     def forward_greedy_decode(self, images):
         """ Forward propagation at test time (no teacher forcing)."""
-        image_features = self.visual_encoder(images)
+        image_features = self.resnet(images)
+        image_features = image_features.view(image_features.size(0), -1)
+        image_features = self.embed(image_features)
+
         batch_size = images.shape[0]
 
         decode_lengths = torch.full(
@@ -159,18 +314,6 @@ class ImageCaptioner(nn.Module):
 
 
 
-# In EGG, the game designer must implement the core functionality of the Sender and Receiver agents. These are then
-# embedded in wrappers that are used to train them to play Gumbel-Softmax- or Reinforce-optimized games. The core
-# Sender must take the input and produce a hidden representation that is then used by the wrapper to initialize
-# the RNN or other module that will generate the message. The core Receiver expects a hidden representation
-# generated by the message-processing wrapper, plus possibly other game-specific input, and it must generate the
-# game-specific output.
-
-# The DiscriReceiver class implements the core Receiver agent for the reconstruction game. In this case, besides the
-# vector generated by the message-decoding RNN in the wrapper (x in the forward method), the module also gets game-specific
-# Receiver input (_input), that is, the matrix containing all input attribute-value vectors. The module maps these vectors to the
-# same dimensionality as the RNN output vector, and computes a dot product between the latter and each of the (transformed) input vectors.
-# The output dot prodoct list is interpreted as a non-normalized probability distribution over possible positions of the target.
 class VisualRefDiscriReceiver(nn.Module):
     def __init__(self, vision, n_features, n_hidden):
         super(VisualRefDiscriReceiver, self).__init__()
@@ -255,38 +398,20 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         return output_captions, None, None
 
 class VisualRefListenerOracle(nn.Module):
-    def __init__(self, n_features, n_hidden, fine_tune_resnet=False):
+    def __init__(self, ranking_model):
         super(VisualRefListenerOracle, self).__init__()
-        resnet = resnet50(pretrained=True)
+        self.ranking_model = ranking_model
 
-        if not fine_tune_resnet:
-            for param in resnet.parameters():
-                param.requires_grad = False
-
-        modules = list(resnet.children())[:-1]
-        self.resnet = nn.Sequential(*modules)
-
-        self.fc1 = nn.Linear(resnet.fc.in_features, n_features)
-        self.fc2 = nn.Linear(n_features, n_hidden)
-
-    def forward(self, rnn_out, receiver_input):
+    def forward(self, message, receiver_input, lengths):
         batch_size = receiver_input[0].shape[0]
 
         images_1, images_2 = receiver_input
 
-        emb_1 = self.resnet(images_1)
-        emb_1 = emb_1.view(emb_1.size(0), -1)
-        emb_1 = self.fc1(emb_1)
-        # TODO add nonlinearity?
-        emb_1 = self.fc2(emb_1)
+        image_1_embedded, message_embedded = self.ranking_model(images_1, message)
+        image_2_embedded, message_embedded = self.ranking_model(images_2, message)
 
-        emb_2 = self.resnet(images_2)
-        emb_2 = emb_2.view(emb_2.size(0), -1)
-        emb_2 = self.fc1(emb_2)
-        emb_2 = self.fc2(emb_2)
-
-        stacked = torch.stack([emb_1, emb_2], dim=1)
+        stacked = torch.stack([image_1_embedded, image_2_embedded], dim=1)
 
         # TODO correct like this?
-        dots = torch.matmul(stacked, torch.unsqueeze(rnn_out, dim=-1))
+        dots = torch.matmul(stacked, torch.unsqueeze(message_embedded, dim=-1))
         return dots.view(batch_size, -1)

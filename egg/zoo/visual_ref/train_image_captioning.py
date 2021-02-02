@@ -1,4 +1,3 @@
-#  python -m egg.zoo.visual_ref.pre_train --vocab_size=10 --n_epochs=10 --random_seed=7 --lr=1e-3 --batch_size=32 --optimizer=adam
 
 from __future__ import print_function
 
@@ -17,14 +16,13 @@ from torch.utils.data import DataLoader
 
 import egg.core as core
 from egg.zoo.visual_ref.dataset import CaptionDataset
-from egg.zoo.visual_ref.models import Vision, ImageCaptioner
+from egg.zoo.visual_ref.models import ImageCaptioner
 from egg.zoo.visual_ref.preprocess import IMAGES_FILENAME, CAPTIONS_FILENAME, VOCAB_FILENAME, MAX_CAPTION_LEN, \
     DATA_PATH
 from egg.zoo.visual_ref.utils import print_caption
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-CHECKPOINT_PATH_VISION = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/vision.pt")
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
 
 
@@ -53,8 +51,8 @@ def main(params):
     opts = core.init(params=params)
 
     # create model checkpoint directory
-    if not os.path.exists(CHECKPOINT_PATH_IMAGE_CAPTIONING):
-        os.makedirs(CHECKPOINT_PATH_IMAGE_CAPTIONING)
+    if not os.path.exists(os.path.dirname(CHECKPOINT_PATH_IMAGE_CAPTIONING)):
+        os.makedirs(os.path.dirname(CHECKPOINT_PATH_IMAGE_CAPTIONING))
 
     train_loader = DataLoader(
         CaptionDataset(
@@ -86,12 +84,11 @@ def main(params):
     with open(vocab_path, "rb") as file:
         vocab = pickle.load(file)
 
-    # TODO: embedding size for speaker is 1024 in paper
     word_embedding_size = 100
     visual_embedding_size = 512
     lstm_hidden_size = 512
-    model_visual_encoder = Vision(visual_embedding_size, fine_tune_resnet=False)
-    model_image_captioning = ImageCaptioner(model_visual_encoder, word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab, MAX_CAPTION_LEN)
+    model_image_captioning = ImageCaptioner(word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab,
+                                            MAX_CAPTION_LEN, fine_tune_resnet=False)
 
     # uses command-line parameters we passed to core.init
     optimizer = core.build_optimizer(model_image_captioning.parameters())
@@ -99,13 +96,6 @@ def main(params):
     model_image_captioning = model_image_captioning.to(device)
 
     def save_model(model, optimizer, best_val_loss, epoch):
-        # torch.save({
-        #     'epoch': epoch,
-        #     'model_state_dict': model_visual_encoder.state_dict(),
-        #     'optimizer_state_dict': optimizer.state_dict(),
-        #     'loss': mean_loss,
-        # }, CHECKPOINT_PATH_VISION)
-
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -161,9 +151,6 @@ def main(params):
             save_model(model_image_captioning, optimizer, best_val_loss, epoch)
 
     core.close()
-
-
-
 
 
 if __name__ == "__main__":

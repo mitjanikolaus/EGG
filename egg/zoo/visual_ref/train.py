@@ -23,10 +23,10 @@ from egg.core import ConsoleLogger, Callback, Interaction, LoggingStrategy
 from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
 from egg.zoo.visual_ref.game import OracleSenderReceiverRnnSupervised
 from egg.zoo.visual_ref.models import VisualRefDiscriReceiver, VisualRefSenderFunctional, \
-    VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle
-from egg.zoo.visual_ref.train_image_captioning import Vision
+    VisualRefSpeakerDiscriminativeOracle, VisualRefListenerOracle, ImageCaptioner, ImageSentenceRanker
 from egg.zoo.visual_ref.preprocess import DATA_PATH, IMAGES_FILENAME, CAPTIONS_FILENAME, RANDOM_SEED, \
-    VOCAB_FILENAME
+    VOCAB_FILENAME, MAX_CAPTION_LEN
+from egg.zoo.visual_ref.train_image_sentence_ranking import CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING
 from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -135,6 +135,7 @@ def main(params):
         vocab = pickle.load(file)
 
     # TODO
+    # TODO: embedding size for speaker is 1024 in paper
     opts.sender_hidden = 1024 # TODO
     opts.sender_embedding = 512 #???
     opts.receiver_embedding = 100 #???
@@ -150,17 +151,21 @@ def main(params):
     # TODO
     n_features = opts.sender_embedding
 
-    # checkpoint_vision = torch.load(CHECKPOINT_PATH)
-    # vision = Vision(n_features)
-    # vision.load_state_dict(checkpoint_vision['model_state_dict'])
+    word_embedding_size = 100
+    joint_embeddings_size = 512
+    lstm_hidden_size = 512
+    checkpoint_ranking_model = torch.load(CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING)
+    ranking_model = ImageSentenceRanker(word_embedding_size, joint_embeddings_size, lstm_hidden_size, len(vocab),
+                                              fine_tune_resnet=False)
+    ranking_model.load_state_dict(checkpoint_ranking_model['model_state_dict'])
 
     sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME)
-    receiver = VisualRefListenerOracle(n_features=n_features, n_hidden=opts.receiver_hidden)
+    receiver = VisualRefListenerOracle(ranking_model)
 
     # sender = core.RnnSenderReinforce(sender, vocab_size=opts.vocab_size, embed_dim=opts.sender_embedding,
     #                                  hidden_size=opts.sender_hidden, cell=opts.sender_cell, max_len=opts.max_len)
-    receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
-                                             hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
+    # receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
+    #                                          hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
 
     # use LoggingStrategy that stores image IDs
     # train_logging_strategy = LoggingStrategy(store_sender_input=False, store_receiver_input=False)
