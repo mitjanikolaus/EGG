@@ -31,7 +31,7 @@ from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-LOG_INTERVAL = 10
+LOG_INTERVAL = 100
 
 class PrintDebugEvents(Callback):
     def __init__(self):
