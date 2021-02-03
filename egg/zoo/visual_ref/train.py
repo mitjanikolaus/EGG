@@ -1,4 +1,5 @@
 #  python -m egg.zoo.visual_ref.train --vocab_size=10 --n_epochs=15 --random_seed=7 --lr=1e-3 --batch_size=32 --optimizer=adam
+import argparse
 import os
 import pickle
 import sys
@@ -32,11 +33,8 @@ from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-LOG_INTERVAL = 100
-
-
 class PrintDebugEvents(Callback):
-    def __init__(self, train_dataset):
+    def __init__(self, train_dataset, args):
         super().__init__()
 
         vocab_path = os.path.join(DATA_PATH, VOCAB_FILENAME)
@@ -45,6 +43,8 @@ class PrintDebugEvents(Callback):
 
         self.train_loss = 0
         self.train_accuracies = 0
+        self.args = args
+
 
         self.train_dataset = train_dataset
 
@@ -75,14 +75,15 @@ class PrintDebugEvents(Callback):
 
             message = decode_caption(interaction_logs.message[z], self.vocab)
             plt.title(
-                f"Left: Target, Right: Distractor | Receiver guess correct: {target_position == receiver_guess}"
+                f"Left: Target, Right: Distractor"
+                f"\nReceiver guess correct: {target_position == receiver_guess}"
                 f"\nMessage: {message}"
             )
             plt.imshow(image)
             plt.show()
 
     def on_test_end(self, _loss, interaction_logs: Interaction, epoch: int):
-        self.print_sample_interactions(interaction_logs)
+        pass
 
     def on_batch_end(
         self,
@@ -98,16 +99,20 @@ class PrintDebugEvents(Callback):
         self.train_loss += loss.detach()
         self.train_accuracies += interaction_logs.aux["acc"].sum()
 
-        if ((batch_id + 1) % LOG_INTERVAL == 0) and (batch_id != 0):
-            mean_loss = self.train_loss / LOG_INTERVAL
+        if ((batch_id + 1) % self.args.log_frequency == 0) and (batch_id != 0):
+            mean_loss = self.train_loss / self.args.log_frequency
             batch_size = interaction_logs.aux["acc"].size()[0]
-            mean_acc = self.train_accuracies / (LOG_INTERVAL * batch_size)
+            mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
 
-            print(f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}")
-            self.print_sample_interactions(interaction_logs)
+            print(
+                f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}"
+            )
 
             self.train_loss = 0
             self.train_accuracies = 0
+
+            if self.args.debug:
+                self.print_sample_interactions(interaction_logs)
 
 
 def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
@@ -119,9 +124,8 @@ def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
     return loss, {"acc": acc}
 
 
-def main(params):
+def main(args):
     # initialize the egg lib
-    opts = core.init(params=params)
     # get pre-defined common line arguments (batch/vocab size, etc).
     # See egg/core/util.py for a list
 
@@ -130,7 +134,7 @@ def main(params):
     )
     train_loader = DataLoader(
         train_dataset,
-        batch_size=opts.batch_size,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -140,7 +144,7 @@ def main(params):
         VisualRefCaptionDataset(
             DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"],
         ),
-        batch_size=opts.batch_size,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -154,20 +158,20 @@ def main(params):
 
     # TODO
     # TODO: embedding size for speaker is 1024 in paper
-    opts.sender_hidden = 1024  # TODO
-    opts.sender_embedding = 512  # ???
-    opts.receiver_embedding = 100  # ???
-    opts.receiver_hidden = 512  # ???
-    opts.sender_entropy_coeff = 0.0  # entropy regularization
-    opts.receiver_entropy_coeff = 0.0  # entropy regularization
-    opts.sender_cell = "lstm"
-    opts.receiver_cell = "lstm"
-    opts.vocab_size = len(vocab)
-    opts.max_len = 1
-    opts.random_seed = 1
+    args.sender_hidden = 1024  # TODO
+    args.sender_embedding = 512  # ???
+    args.receiver_embedding = 100  # ???
+    args.receiver_hidden = 512  # ???
+    args.sender_entropy_coeff = 0.0  # entropy regularization
+    args.receiver_entropy_coeff = 0.0  # entropy regularization
+    args.sender_cell = "lstm"
+    args.receiver_cell = "lstm"
+    args.vocab_size = len(vocab)
+    args.max_len = 1
+    args.random_seed = 1
 
     # TODO
-    n_features = opts.sender_embedding
+    n_features = args.sender_embedding
 
     word_embedding_size = 100
     joint_embeddings_size = 512
@@ -197,13 +201,13 @@ def main(params):
         sender,
         receiver,
         loss,
-        receiver_entropy_coeff=opts.receiver_entropy_coeff,
+        receiver_entropy_coeff=args.receiver_entropy_coeff,
         train_logging_strategy=train_logging_strategy,
     )
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
     # core.PrintValidationEvents(n_epochs=1)
-    callbacks.append(PrintDebugEvents(train_dataset))
+    callbacks.append(PrintDebugEvents(train_dataset, args))
 
     optimizer = core.build_optimizer(game.parameters())
 
@@ -215,15 +219,35 @@ def main(params):
         callbacks=callbacks,
     )
 
-    print("Starting training with opts: ")
-    print(opts)
-    trainer.train(opts.n_epochs)
+    print("Starting training with args: ")
+    print(args)
+    trainer.train(args.n_epochs)
 
     game.eval()
 
     core.close()
 
 
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--debug",
+        default=False,
+        action="store_true",
+        help="Print debug interactions output.",
+    )
+    parser.add_argument(
+        "--log-frequency",
+        default=100,
+        type=int,
+        help="Logging frequency (number of batches)",
+    )
+    args = core.init(parser)
+
+    return args
+
+
 if __name__ == "__main__":
     print("Start training on device: ", device)
-    main(sys.argv[1:])
+    args = get_args()
+    main(args)
