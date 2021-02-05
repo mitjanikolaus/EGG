@@ -6,7 +6,12 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 import numpy as np
+from torchvision import transforms
 from tqdm import tqdm
+from skimage.transform import resize
+
+import matplotlib.pyplot as plt
+
 
 from egg.zoo.visual_ref.preprocess import DATA_PATH, VOCAB_FILENAME
 from egg.zoo.visual_ref.utils import print_caption, show_image
@@ -125,17 +130,19 @@ class CaptionDataset(Dataset):
             self.captions = pickle.load(file)
 
         # Set pytorch transformation pipeline
-        self.transform = normalize
-
+        self.transform = torch.nn.Sequential(
+            # TODO
+            # transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+        )
     def get_image_features(self, id):
         image_data = self.images[str(id)][()]
 
         # scale the features with given factor
-        image_data = image_data * self.features_scale_factor
+        image = image_data * self.features_scale_factor
 
-        image = torch.FloatTensor(image_data)
-        if self.transform:
-            image = self.transform(image)
+        image = torch.FloatTensor(image)
+
+        # image = self.transform(image)
 
         return image
 
@@ -175,14 +182,12 @@ class VisualRefCaptionDataset(Dataset):
         data_folder,
         features_filename,
         captions_filename,
-        normalize=None,
         features_scale_factor=1 / 255.0,
     ):
         """
         :param data_folder: folder where data files are stored
         :param features_filename: Filename of the image features file
         :param data_indices: dataset split, indices of images that should be included
-        :param normalize: PyTorch normalization transformation
         :param features_scale_factor: Additional scale factor, applied before normalization
         """
         self.images = h5py.File(
@@ -196,7 +201,10 @@ class VisualRefCaptionDataset(Dataset):
             self.captions = pickle.load(file)
 
         # Set pytorch transformation pipeline
-        self.transform = normalize
+        # TODO
+        self.transform = torch.nn.Sequential(
+            # transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+        )
 
         self.sample_image_ids = []
         for i in range(len(self.images)):
@@ -204,15 +212,16 @@ class VisualRefCaptionDataset(Dataset):
                 self.sample_image_ids.append((i, j))
 
 
-    def get_image_features(self, id):
+    def get_image_features(self, id, channels_first=True):
         image_data = self.images[str(id)][()]
 
-        # scale the features with given factor
-        image_data = image_data * self.features_scale_factor
+        # scale the features with given factor (convert values from [0, 256] to [0, 1]
+        image = image_data * self.features_scale_factor
 
-        image = torch.FloatTensor(image_data)
-        if self.transform:
-            image = self.transform(image)
+        image = torch.FloatTensor(image)
+
+        if channels_first:
+            image = image.permute(2, 0, 1)
 
         return image
 

@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 
 import h5py
 import nltk
+from skimage.transform import resize
 from sklearn.model_selection import train_test_split
 from torchtext.vocab import Vocab
+from torchvision import transforms
 from tqdm import tqdm
 
 nltk.download("punkt")
@@ -68,7 +70,10 @@ def preprocess_images_and_captions(
             # discard transparency channel
             img = img[..., :3]
 
-            # show_image(img)
+            # downscale to 224x224 pixes (optimized for resnet)
+            img = resize(img, (224, 224), preserve_range=True)
+
+            # show_image(img / 255)
             images.append(img)
 
     captions_file_1 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences1_10020.txt")
@@ -144,7 +149,7 @@ def preprocess_images_and_captions(
             for img_id, img in tqdm(enumerate(images_split)):
                 # Read image and save it to hdf5 file
                 h5py_file.create_dataset(
-                    str(img_id), (3, 400, 500), dtype="uint8", data=img
+                    str(img_id), (224, 224, 3), dtype="uint8", data=img
                 )
 
         # Save captions

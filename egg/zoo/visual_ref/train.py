@@ -52,19 +52,10 @@ class PrintDebugEvents(Callback):
         target_image_ids, distractor_image_ids = interaction_logs.sender_input
         for z in range(num_interactions):
             target_image = self.train_dataset.get_image_features(
-                int(target_image_ids[z])
+                int(target_image_ids[z]), channels_first=False
             )
             distractor_image = self.train_dataset.get_image_features(
-                int(distractor_image_ids[z])
-            )
-
-            target_image = target_image.reshape(
-                target_image.shape[1], target_image.shape[2], target_image.shape[0]
-            )
-            distractor_image = distractor_image.reshape(
-                distractor_image.shape[1],
-                distractor_image.shape[2],
-                distractor_image.shape[0],
+                int(distractor_image_ids[z]), channels_first=False
             )
 
             # plot the two images side-by-side
@@ -130,7 +121,7 @@ def main(args):
     # See egg/core/util.py for a list
 
     train_dataset = VisualRefCaptionDataset(
-        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"],
+        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"]
     )
     train_loader = DataLoader(
         train_dataset,
