@@ -13,7 +13,7 @@ from skimage.transform import resize
 import matplotlib.pyplot as plt
 
 
-from egg.zoo.visual_ref.preprocess import DATA_PATH, VOCAB_FILENAME
+from egg.zoo.visual_ref.preprocess import DATA_PATH, VOCAB_FILENAME, MEAN_ABSTRACT_SCENES, STD_ABSTRACT_SCENES
 from egg.zoo.visual_ref.utils import print_caption, show_image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -110,7 +110,6 @@ class CaptionDataset(Dataset):
         data_folder,
         features_filename,
         captions_filename,
-        normalize=None,
         features_scale_factor=1 / 255.0,
     ):
         """
@@ -130,19 +129,21 @@ class CaptionDataset(Dataset):
             self.captions = pickle.load(file)
 
         # Set pytorch transformation pipeline
-        self.transform = torch.nn.Sequential(
-            # TODO
-            # transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-        )
-    def get_image_features(self, id):
+        self.normalize = transforms.Normalize(mean=MEAN_ABSTRACT_SCENES, std=STD_ABSTRACT_SCENES)
+
+    def get_image_features(self, id, channels_first=True, normalize=True):
         image_data = self.images[str(id)][()]
 
+        image = torch.FloatTensor(image_data)
+
+        if channels_first:
+            image = image.permute(2, 0, 1)
+
+        if normalize:
+            image = self.normalize(image)
+
         # scale the features with given factor
-        image = image_data * self.features_scale_factor
-
-        image = torch.FloatTensor(image)
-
-        # image = self.transform(image)
+        image = image * self.features_scale_factor
 
         return image
 
@@ -201,10 +202,7 @@ class VisualRefCaptionDataset(Dataset):
             self.captions = pickle.load(file)
 
         # Set pytorch transformation pipeline
-        # TODO
-        self.transform = torch.nn.Sequential(
-            # transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-        )
+        self.normalize = transforms.Normalize(mean=MEAN_ABSTRACT_SCENES, std=STD_ABSTRACT_SCENES)
 
         self.sample_image_ids = []
         for i in range(len(self.images)):
@@ -212,16 +210,19 @@ class VisualRefCaptionDataset(Dataset):
                 self.sample_image_ids.append((i, j))
 
 
-    def get_image_features(self, id, channels_first=True):
+    def get_image_features(self, id, channels_first=True, normalize=True):
         image_data = self.images[str(id)][()]
 
-        # scale the features with given factor (convert values from [0, 256] to [0, 1]
-        image = image_data * self.features_scale_factor
-
-        image = torch.FloatTensor(image)
+        image = torch.FloatTensor(image_data)
 
         if channels_first:
             image = image.permute(2, 0, 1)
+
+        if normalize:
+            image = self.normalize(image)
+
+        # scale the features with given factor (convert values from [0, 256] to [0, 1]
+        image = image * self.features_scale_factor
 
         return image
 

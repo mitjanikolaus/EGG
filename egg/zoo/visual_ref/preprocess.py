@@ -16,8 +16,9 @@ import nltk
 from skimage.transform import resize
 from sklearn.model_selection import train_test_split
 from torchtext.vocab import Vocab
-from torchvision import transforms
 from tqdm import tqdm
+
+import numpy as np
 
 nltk.download("punkt")
 
@@ -31,6 +32,9 @@ CAPTIONS_PER_IMAGE = 6
 
 DATA_PATH = os.path.expanduser("~/data/abstract_scenes/preprocessed/")
 DATASET_SIZE = 10020
+
+MEAN_ABSTRACT_SCENES = [107.36, 177.26, 133.54]
+STD_ABSTRACT_SCENES = [49.11, 45.28, 75.83]
 
 def encode_caption(caption, vocab):
     return (
@@ -60,7 +64,7 @@ def preprocess_images_and_captions(
     word_freq = Counter()
 
     images_folder = os.path.join(dataset_folder, "RenderedScenes")
-    for scene_id in tqdm(range(1002)):
+    for scene_id in range(600):#tqdm(range(1002)):
         for image_scene_id in range(10):
             img_filename = f"Scene{scene_id}_{image_scene_id}.png"
             img_path = os.path.join(images_folder, img_filename)
@@ -75,6 +79,12 @@ def preprocess_images_and_captions(
 
             # show_image(img / 255)
             images.append(img)
+
+    # Calculate Mean and Standard deviation of images for sample
+    images_analysis = np.array(images[:500])
+    print("Mean and standard deviation: ")
+    print(np.mean(images_analysis.reshape(-1, 3), axis=0))
+    print(np.std(images_analysis.reshape(-1, 3), axis=0))
 
     captions_file_1 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences1_10020.txt")
     captions_file_2 = os.path.join(dataset_folder, "SimpleSentences", "SimpleSentences2_10020.txt")

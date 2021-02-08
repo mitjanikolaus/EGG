@@ -45,17 +45,16 @@ class PrintDebugEvents(Callback):
         self.train_accuracies = 0
         self.args = args
 
-
         self.train_dataset = train_dataset
 
     def print_sample_interactions(self, interaction_logs, num_interactions=5):
         target_image_ids, distractor_image_ids = interaction_logs.sender_input
         for z in range(num_interactions):
             target_image = self.train_dataset.get_image_features(
-                int(target_image_ids[z]), channels_first=False
+                int(target_image_ids[z]), channels_first=False, normalize=False
             )
             distractor_image = self.train_dataset.get_image_features(
-                int(distractor_image_ids[z]), channels_first=False
+                int(distractor_image_ids[z]), channels_first=False, normalize=False
             )
 
             # plot the two images side-by-side
