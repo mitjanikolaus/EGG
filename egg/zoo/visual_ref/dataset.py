@@ -183,6 +183,7 @@ class VisualRefCaptionDataset(Dataset):
         data_folder,
         features_filename,
         captions_filename,
+        batch_size,
         features_scale_factor=1 / 255.0,
     ):
         """
@@ -208,6 +209,8 @@ class VisualRefCaptionDataset(Dataset):
         for i in range(len(self.images)):
             for j in range(len(self.images)):
                 self.sample_image_ids.append((i, j))
+
+        self.batch_size = batch_size
 
 
     def get_image_features(self, id, channels_first=True, normalize=True):
@@ -247,7 +250,10 @@ class VisualRefCaptionDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.images) ** 2
+        length = len(self.images) ** 2
+
+        # discard last incomplete batch
+        return length - (length % self.batch_size)
 
     # def pad_collate(batch):
     #     sender_inputs = [s[0] for s in batch]

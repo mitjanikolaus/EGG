@@ -36,7 +36,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main(args):
     train_dataset = VisualRefCaptionDataset(
-        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"]
+        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"], args.batch_size
     )
     train_loader = DataLoader(
         train_dataset,
@@ -46,7 +46,7 @@ def main(args):
         pin_memory=False,
     )
     val_dataset = VisualRefCaptionDataset(
-        DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"],
+        DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"], args.batch_size
     )
     val_loader = DataLoader(
         val_dataset,
@@ -72,7 +72,7 @@ def main(args):
     args.sender_cell = "lstm"
     args.receiver_cell = "lstm"
     args.vocab_size = len(vocab)
-    args.max_len = 1
+    args.max_len = 25
     args.random_seed = 1
 
     word_embedding_size = 100
@@ -88,18 +88,19 @@ def main(args):
     )
     ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
 
-    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME)
+    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len)
     receiver = VisualRefListenerOracle(ranking_model)
 
     # use LoggingStrategy that stores image IDs
-    train_logging_strategy = VisualRefLoggingStrategy()
+    logging_strategy = VisualRefLoggingStrategy()
 
     game = OracleSenderReceiverRnnSupervised(
         sender,
         receiver,
         loss,
         receiver_entropy_coeff=args.receiver_entropy_coeff,
-        train_logging_strategy=train_logging_strategy,
+        train_logging_strategy=logging_strategy,
+        test_logging_strategy=logging_strategy,
     )
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
@@ -120,7 +121,8 @@ def main(args):
     game.eval()
     val_loss, interactions = trainer.eval()
 
-    print("Val loss: ", val_loss)
+    print(f"Val loss: {val_loss:.3f}")
+    print(f"Val acc: {interactions.aux['acc'].mean():.3f}")
 
     core.close()
 

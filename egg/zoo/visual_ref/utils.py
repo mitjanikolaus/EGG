@@ -43,7 +43,7 @@ class VisualRefLoggingStrategy(LoggingStrategy):
     ):
         # Store only image IDs but not data
         target_image, distractor_image, target_image_id, distractor_image_id = sender_input
-        filtered_sender_input = target_image_id, distractor_image_id
+        filtered_sender_input = torch.stack((target_image_id, distractor_image_id))
 
         return Interaction(
             sender_input=filtered_sender_input,

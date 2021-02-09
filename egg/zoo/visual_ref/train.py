@@ -116,7 +116,7 @@ def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
 
 def main(args):
     train_dataset = VisualRefCaptionDataset(
-        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"]
+        DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"], args.batch_size
     )
     train_loader = DataLoader(
         train_dataset,
@@ -127,7 +127,7 @@ def main(args):
     )
     val_loader = DataLoader(
         VisualRefCaptionDataset(
-            DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"],
+            DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"], args.batch_size
         ),
         batch_size=args.batch_size,
         shuffle=True,
@@ -170,7 +170,7 @@ def main(args):
     )
     ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
 
-    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME)
+    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len)
     receiver = VisualRefListenerOracle(ranking_model)
 
     # sender = core.RnnSenderReinforce(sender, vocab_size=opts.vocab_size, embed_dim=opts.sender_embedding,
@@ -205,6 +205,7 @@ def main(args):
 
     print("Starting training with args: ")
     print(args)
+    print("Number of samples: ", len(train_dataset))
     trainer.train(args.n_epochs)
 
     game.eval()

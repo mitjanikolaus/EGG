@@ -361,7 +361,7 @@ class VisualRefSenderFunctional(nn.Module):
 
 
 class VisualRefSpeakerDiscriminativeOracle(nn.Module):
-    def __init__(self, data_folder, captions_filename):
+    def __init__(self, data_folder, captions_filename, max_sequence_length):
         super(VisualRefSpeakerDiscriminativeOracle, self).__init__()
 
         # Load captions
@@ -374,6 +374,23 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         with open(os.path.join(data_folder, captions_filename["test"]), "rb") as file:
             self.captions_test = pickle.load(file)
 
+        self.max_sequence_length = max_sequence_length
+
+
+    def pad_messages(self, messages, padding_value=0.0):
+        """Pad all messages to max sequence length."""
+
+        trailing_dims = messages[0].size()[1:]
+        max_len = self.max_sequence_length
+        out_dims = (len(messages), max_len) + trailing_dims
+
+        out_tensor = messages[0].new_full(out_dims, padding_value)
+        for i, tensor in enumerate(messages):
+            length = tensor.size(0)
+            # use index notation to prevent duplicate references to the tensor
+            out_tensor[i, :length, ...] = tensor
+
+        return out_tensor
 
     def forward(self, input):
         # input: target_image, distractor_image
@@ -391,7 +408,7 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         output_captions = [torch.tensor(caption, device=device) for caption in output_captions]
 
         # Pad all captions in batch to equal length
-        output_captions = pad_sequence(output_captions, batch_first=True)
+        output_captions = self.pad_messages(output_captions)
 
         # out: sender RNN init hidden state
         # out: sequence, logits, entropy
