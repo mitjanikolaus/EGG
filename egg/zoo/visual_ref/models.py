@@ -376,10 +376,8 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
 
         self.max_sequence_length = max_sequence_length
 
-
     def pad_messages(self, messages, padding_value=0.0):
-        """Pad all messages to max sequence length."""
-
+        """Trim and pad all messages to max sequence length."""
         trailing_dims = messages[0].size()[1:]
         max_len = self.max_sequence_length
         out_dims = (len(messages), max_len) + trailing_dims
@@ -388,7 +386,7 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         for i, tensor in enumerate(messages):
             length = tensor.size(0)
             # use index notation to prevent duplicate references to the tensor
-            out_tensor[i, :length, ...] = tensor
+            out_tensor[i, :length, ...] = tensor[:self.max_sequence_length]
 
         return out_tensor
 
