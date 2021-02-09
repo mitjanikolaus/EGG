@@ -1,20 +1,24 @@
 name: egg
 channels:
   - pytorch
-  - anaconda
   - conda-forge
+  - anaconda
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=main
   - brotlipy=0.7.0=py36h27cfd23_1003
   - ca-certificates=2021.1.19=h06a4308_0
-  - certifi=2020.12.5=py36h5fab9bb_1
+  - certifi=2020.12.5=py36h06a4308_0
   - cffi=1.14.4=py36h261ae71_0
   - chardet=4.0.0=py36h06a4308_1003
   - click=7.1.2=py_0
+  - cloudpickle=1.6.0=py_0
   - cryptography=3.3.1=py36h3c74f83_0
   - cudatoolkit=10.1.243=h6bb024c_0
   - cycler=0.10.0=py_2
+  - cytoolz=0.11.0=py36h7b6447c_0
+  - dask-core=2021.1.1=pyhd3eb1b0_0
+  - decorator=4.4.2=pyhd3eb1b0_0
   - freetype=2.10.4=h7ca028e_0
   - h5py=2.10.0=py36hd6299e0_1
   - hdf5=1.10.6=hb1b8bf9_0
@@ -42,6 +46,7 @@ dependencies:
   - matplotlib-base=3.2.2=py36h5fdd944_1
   - mkl=2020.2=256
   - ncurses=6.2=he6710b0_1
+  - networkx=2.5=py_0
   - ninja=1.10.2=py36hff7bd54_0
   - nltk=3.5=py_0
   - olefile=0.46=pyh9f0ad1d_1
@@ -55,21 +60,27 @@ dependencies:
   - python-dateutil=2.8.1=py_0
   - python_abi=3.6=1_cp36m
   - pytorch=1.4.0=py3.6_cuda10.1.243_cudnn7.6.3_0
+  - pywavelets=1.1.1=py36h7b6447c_2
+  - pyyaml=5.4.1=py36h27cfd23_1
   - readline=8.0=h7b6447c_0
   - regex=2020.10.15=py36h7b6447c_0
   - requests=2.25.1=pyhd3eb1b0_0
+  - scikit-image=0.17.2=py36hdf5156a_0
   - scikit-learn=0.23.2=py36hb6e6923_3
   - setuptools=51.3.3=py36h06a4308_4
   - six=1.15.0=pyh9f0ad1d_0
   - sqlite=3.33.0=h62c20be_0
   - threadpoolctl=2.1.0=pyh5ca1d4c_0
+  - tifffile=2020.10.1=py36hdd07704_2
   - tk=8.6.10=hbc83047_0
+  - toolz=0.11.1=pyhd3eb1b0_0
   - torchtext=0.6.0=py_1
   - tornado=6.1=py36h1d69622_0
   - tqdm=4.50.2=py_0
   - urllib3=1.26.3=pyhd3eb1b0_0
   - wheel=0.36.2=pyhd3eb1b0_0
   - xz=5.2.5=h7b6447c_0
+  - yaml=0.2.5=h7b6447c_0
   - zlib=1.2.11=h7b6447c_3
   - pip:
     - attrs==20.3.0
