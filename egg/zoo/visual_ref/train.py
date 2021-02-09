@@ -115,10 +115,6 @@ def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
 
 
 def main(args):
-    # initialize the egg lib
-    # get pre-defined common line arguments (batch/vocab size, etc).
-    # See egg/core/util.py for a list
-
     train_dataset = VisualRefCaptionDataset(
         DATA_PATH, IMAGES_FILENAME["train"], CAPTIONS_FILENAME["train"]
     )
@@ -128,7 +124,6 @@ def main(args):
         shuffle=True,
         num_workers=0,
         pin_memory=False,
-        # collate_fn=VisualRefCaptionDataset.pad_collate
     )
     val_loader = DataLoader(
         VisualRefCaptionDataset(
@@ -138,7 +133,6 @@ def main(args):
         shuffle=True,
         num_workers=0,
         pin_memory=False,
-        # collate_fn=VisualRefCaptionDataset.pad_collate
     )
 
     vocab_path = os.path.join(DATA_PATH, VOCAB_FILENAME)
@@ -166,7 +160,7 @@ def main(args):
     word_embedding_size = 100
     joint_embeddings_size = 512
     lstm_hidden_size = 512
-    checkpoint_ranking_model = torch.load(CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING)
+    checkpoint_ranking_model = torch.load(CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING, map_location=device)
     ranking_model = ImageSentenceRanker(
         word_embedding_size,
         joint_embeddings_size,
@@ -232,6 +226,10 @@ def get_args():
         type=int,
         help="Logging frequency (number of batches)",
     )
+
+    # initialize the egg lib
+    # get pre-defined common line arguments (batch/vocab size, etc).
+    # See egg/core/util.py for a list
     args = core.init(parser)
 
     return args
