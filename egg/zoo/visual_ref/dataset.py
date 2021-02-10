@@ -158,7 +158,7 @@ class CaptionDataset(Dataset):
             caption
         )
 
-        return image, caption
+        return image, caption, image_id
 
     def __len__(self):
         return len(self.images) * self.CAPTIONS_PER_IMAGE
@@ -166,11 +166,12 @@ class CaptionDataset(Dataset):
     def pad_collate(batch):
         images = torch.stack([s[0] for s in batch])
         captions = [s[1] for s in batch]
+        image_ids = torch.tensor([s[2] for s in batch])
 
         sequence_lengths = torch.tensor([len(c) for c in captions])
         padded_captions = pad_sequence(captions, batch_first=True)
 
-        return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
+        return images.to(device), padded_captions.to(device), sequence_lengths.to(device), image_ids
 
 
 class VisualRefCaptionDataset(Dataset):

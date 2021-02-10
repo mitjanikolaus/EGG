@@ -28,22 +28,23 @@ CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_re
 
 VAL_INTERVAL = 100
 
-PRINT_SAMPLE_CAPTIONS = 10
+PRINT_SAMPLE_CAPTIONS = 5
 
-def print_model_output(output, target_captions, vocab, num_captions=1):
+def print_model_output(output, target_captions, image_ids, vocab, num_captions=1):
     captions_model = torch.argmax(output, dim=1)
     for i in range(num_captions):
+        print(f"Image ID: {image_ids[i]}")
         print("Target: ", end="")
         print_caption(target_captions[i], vocab)
         print("Model output: ", end="")
         print_caption(captions_model[i], vocab)
 
 def print_sample_model_output(model, dataloader, vocab, num_captions=1):
-    images, captions, caption_lengths = next(iter(dataloader))
+    images, captions, caption_lengths, image_ids = next(iter(dataloader))
 
-    output, decode_lengths = model.forward_greedy_decode(images)
+    output, decode_lengths = model.forward_decode(images, decode_type="sample")
 
-    print_model_output(output, captions, vocab, num_captions)
+    print_model_output(output, captions, image_ids, vocab, num_captions)
 
 
 def main(params):
@@ -111,8 +112,8 @@ def main(params):
         print_sample_model_output(model, dataloader, vocab, PRINT_SAMPLE_CAPTIONS)
 
         val_losses = []
-        for batch_idx, (images, captions, caption_lengths) in enumerate(dataloader):
-            output, decode_lengths = model.forward_greedy_decode(images)
+        for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
+            output, decode_lengths = model.forward_decode(images, decode_type="sample")
 
             loss = model.calc_loss(output, captions, caption_lengths)
 
@@ -127,7 +128,7 @@ def main(params):
     best_val_loss = math.inf
     for epoch in range(opts.n_epochs):
         losses = []
-        for batch_idx, (images, captions, caption_lengths) in enumerate(train_loader):
+        for batch_idx, (images, captions, caption_lengths, _) in enumerate(train_loader):
             output = model_image_captioning(images, captions, caption_lengths)
 
             loss = model_image_captioning.calc_loss(output, captions, caption_lengths)

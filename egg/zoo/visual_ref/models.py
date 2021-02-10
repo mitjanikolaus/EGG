@@ -231,8 +231,12 @@ class ImageCaptioner(nn.Module):
         return output
 
 
-    def forward_greedy_decode(self, images):
+    def forward_decode(self, images, decode_type="greedy"):
         """ Forward propagation at test time (no teacher forcing)."""
+
+        if decode_type not in ["greedy", "sample"]:
+            raise NotImplementedError("Unknown decode type: ", decode_type)
+
         image_features = self.resnet(images)
         image_features = image_features.view(image_features.size(0), -1)
         image_features = self.embed(image_features)
@@ -293,7 +297,12 @@ class ImageCaptioner(nn.Module):
             scores_for_timestep = scores_for_timestep.squeeze(1)
 
             # Update the previously predicted words
-            prev_words = torch.argmax(scores_for_timestep, dim=1)
+            if decode_type == "greedy":
+                # greedy decode
+                prev_words = torch.argmax(scores_for_timestep, dim=1)
+            else:
+                # sample from the distribution
+                prev_words = torch.multinomial(torch.softmax(scores_for_timestep, -1), 1).squeeze()
 
             scores[indices_incomplete_sequences, t, :] = scores_for_timestep[
                 indices_incomplete_sequences
