@@ -88,7 +88,7 @@ def main(args):
     )
     ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
 
-    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len)
+    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len, vocab)
     receiver = VisualRefListenerOracle(ranking_model)
 
     # use LoggingStrategy that stores image IDs
