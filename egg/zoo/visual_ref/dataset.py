@@ -256,13 +256,3 @@ class VisualRefCaptionDataset(Dataset):
         # discard last incomplete batch
         return length - (length % self.batch_size)
 
-    # def pad_collate(batch):
-    #     sender_inputs = [s[0] for s in batch]
-    #     target_labels = [s[1] for s in batch]
-    #     receiver_inputs = [s[2] for s in batch]
-    #
-    #     sequence_lengths = torch.tensor([len(c) for c in captions])
-    #     padded_captions = pad_sequence(captions, batch_first=True)
-    #
-    #     return images.to(device), padded_captions.to(device), sequence_lengths.to(device)
-

@@ -26,7 +26,7 @@ from egg.zoo.visual_ref.preprocess import (
     CAPTIONS_FILENAME,
     VOCAB_FILENAME,
 )
-from egg.zoo.visual_ref.train import loss
+from egg.zoo.visual_ref.train import loss, PrintDebugEvents
 from egg.zoo.visual_ref.train_image_sentence_ranking import (
     CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING,
 )
@@ -123,6 +123,9 @@ def main(args):
 
     print(f"Val loss: {val_loss:.3f}")
     print(f"Val acc: {interactions.aux['acc'].mean():.3f}")
+
+    debugger = PrintDebugEvents(val_dataset, args)
+    debugger.print_sample_interactions(interactions)
 
     core.close()
 

@@ -379,8 +379,13 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         # input: target_image, distractor_image
         images, target_label, target_image_id, distractor_image_id = input
 
-        #TODO: choose best caption
-        output_captions = [self.captions_train[int(i)][0] for i in target_image_id]
+        if self.training:
+            #TODO: choose best caption
+            output_captions = [self.captions_train[int(i)][0] for i in target_image_id]
+        else:
+            output_captions = [self.captions_val[int(i)][0] for i in target_image_id]
+            # TODO test mode
+            # output_captions = [self.captions_test[int(i)][0] for i in target_image_id]
 
         # append end of message token
         # TODO: currently overlap with padding
