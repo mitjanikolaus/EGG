@@ -7,6 +7,8 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence, pad_packed_se
 from torchvision.models import resnet50
 from torch.autograd import Variable
 
+import numpy as np
+
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,8 +60,7 @@ class ContrastiveLoss(nn.Module):
 
 
 def cosine_sim(images_embedded, captions_embedded):
-    """Cosine similarity between all the image and sentence pairs
-    """
+    """Cosine similarity between all the image and sentence pairs."""
     return images_embedded.mm(captions_embedded.t())
 
 
@@ -85,6 +86,28 @@ class ImageSentenceRanker(nn.Module):
         self.lstm_hidden_size = lstm_hidden_size
 
         self.loss = ContrastiveLoss()
+
+    def accuracy_discrimination(self, images_embedded, captions_embedded):
+        """Calculate accuracy of model when discriminating 2 images/captions"""
+        accuracies = []
+        for i, (image_1_embedded, caption_1_embedded) in enumerate(zip(images_embedded, captions_embedded)):
+            for j, (image_2_embedded, caption_2_embedded) in enumerate(zip(images_embedded, captions_embedded)):
+                # disregard cases where images are the same
+                if i != j:
+                    similarities = cosine_sim(torch.stack((image_1_embedded, image_2_embedded)), torch.stack((caption_1_embedded, caption_2_embedded)))
+                    # caption_0 is more similar to image_0 than to image_1
+                    if similarities[0, 0] > similarities[0, 1]:
+                        accuracies.append(1)
+                    else:
+                        accuracies.append(0)
+
+                    # caption_1 is more similar to image_1 than to image_0
+                    if similarities[1, 1] > similarities[1, 0]:
+                        accuracies.append(1)
+                    else:
+                        accuracies.append(0)
+
+        return np.mean(accuracies)
 
     def embed_captions(self, captions, decode_lengths):
         # Initialize LSTM state
@@ -322,53 +345,6 @@ class ImageCaptioner(nn.Module):
         return self.loss_function(scores, target_captions)
 
 
-
-class VisualRefDiscriReceiver(nn.Module):
-    def __init__(self, vision, n_features, n_hidden):
-        super(VisualRefDiscriReceiver, self).__init__()
-        self.vision = vision
-        self.fc1 = nn.Linear(n_hidden, n_features)
-
-        self.fc2 = nn.Linear(n_features, n_hidden)
-
-    def forward(self, x, _input):
-        # x: receiver RNN hidden output
-        targets = _input[:, 0]
-        distractors = _input[:, 1]
-        with torch.no_grad():
-            emb_targets = self.vision(targets)
-            emb_distractors = self.vision(distractors)
-        emb_targets = self.fc1(emb_targets)
-        emb_distractors = self.fc1(emb_distractors)
-
-        stacked = torch.stack([emb_targets, emb_distractors], dim=1)
-
-        # TODO correct like this?
-        dots = torch.matmul(stacked, torch.unsqueeze(x, dim=-1))
-        return dots.squeeze()
-
-class VisualRefSenderFunctional(nn.Module):
-    def __init__(self, vision, n_hidden, n_features):
-        super(VisualRefSenderFunctional, self).__init__()
-        self.fc = nn.Linear(n_hidden, n_features)
-        self.vision = vision
-
-    def forward(self, x):
-        # input: (batch_size, 2, 1, 28, 28)
-        targets = x[:, 0]
-        distractors = x[:, 1]
-        with torch.no_grad():
-            emb_targets = self.vision(targets)
-            emb_distractors = self.vision(distractors)
-
-        emb_targets = self.fc(emb_targets)
-        emb_distractors = self.fc(emb_distractors)
-
-        out = torch.hstack([emb_targets, emb_distractors])
-        # out: sender RNN init hidden state
-        return out
-
-
 class VisualRefSpeakerDiscriminativeOracle(nn.Module):
     def __init__(self, data_folder, captions_filename, max_sequence_length):
         super(VisualRefSpeakerDiscriminativeOracle, self).__init__()
@@ -421,6 +397,7 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         # out: sequence, logits, entropy
         return output_captions, None, None
 
+
 class VisualRefListenerOracle(nn.Module):
     def __init__(self, ranking_model):
         super(VisualRefListenerOracle, self).__init__()
@@ -434,10 +411,9 @@ class VisualRefListenerOracle(nn.Module):
         images_1_embedded, messages_embedded = self.ranking_model(images_1, messages, message_lengths)
         images_2_embedded, messages_embedded = self.ranking_model(images_2, messages, message_lengths)
 
-        stacked = torch.stack([images_1_embedded, images_2_embedded], dim=1)
+        stacked_images = torch.stack([images_1_embedded, images_2_embedded], dim=1)
 
-        # TODO correct like this?
-        dots = torch.matmul(stacked, torch.unsqueeze(messages_embedded, dim=-1))
+        similarities = torch.matmul(stacked_images, torch.unsqueeze(messages_embedded, dim=-1))
 
-        # out: sequence, logits, entropy
-        return dots.view(batch_size, -1),  None, None
+        # out: scores, logits, entropy
+        return similarities.view(batch_size, -1),  None, None

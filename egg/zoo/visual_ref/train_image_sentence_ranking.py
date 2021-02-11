@@ -20,7 +20,6 @@ from egg.zoo.visual_ref.preprocess import (
     IMAGES_FILENAME,
     CAPTIONS_FILENAME,
     VOCAB_FILENAME,
-    MAX_CAPTION_LEN,
     DATA_PATH,
 )
 
@@ -98,25 +97,31 @@ def main(params):
         model.eval()
 
         val_losses = []
-        for batch_idx, (images, captions, caption_lengths) in enumerate(dataloader):
+        val_accuracies = []
+        for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
             images_embedded, captions_embedded = model_ranking(
                 images, captions, caption_lengths
             )
 
-            loss = model_ranking.loss(images_embedded, captions_embedded)
+            acc = model_ranking.accuracy_discrimination(images_embedded, captions_embedded)
+            val_accuracies.append(acc)
 
+            loss = model_ranking.loss(images_embedded, captions_embedded)
             val_losses.append(loss.mean().item())
 
         val_loss = np.mean(val_losses)
         print(f"val loss: {val_loss}")
 
+        val_acc = np.mean(val_accuracies)
+        print(f"val acc: {val_acc}")
+
         model.train()
-        return val_loss
+        return val_loss, val_acc
 
     best_val_loss = math.inf
     for epoch in range(opts.n_epochs):
         losses = []
-        for batch_idx, (images, captions, caption_lengths) in enumerate(train_loader):
+        for batch_idx, (images, captions, caption_lengths, _) in enumerate(train_loader):
             images_embedded, captions_embedded = model_ranking(
                 images, captions, caption_lengths
             )
@@ -130,13 +135,13 @@ def main(params):
 
             if batch_idx % VAL_INTERVAL == 0:
                 print(f"Batch {batch_idx}: train loss: {np.mean(losses)}")
-                val_loss = validate_model(model_ranking, val_images_loader)
+                val_loss, _ = validate_model(model_ranking, val_images_loader)
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     save_model(model_ranking, optimizer, best_val_loss, epoch)
 
         print(f"Train Epoch: {epoch}, train loss: {np.mean(losses)}")
-        val_loss = validate_model(model_ranking, val_images_loader)
+        val_loss, _ = validate_model(model_ranking, val_images_loader)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_model(model_ranking, optimizer, best_val_loss, epoch)

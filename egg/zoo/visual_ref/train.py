@@ -89,7 +89,7 @@ class PrintDebugEvents(Callback):
         self.train_loss += loss.detach()
         self.train_accuracies += interaction_logs.aux["acc"].sum()
 
-        if ((batch_id + 1) % self.args.log_frequency == 0) and (batch_id != 0):
+        if (batch_id + 1) % self.args.log_frequency == 0:
             mean_loss = self.train_loss / self.args.log_frequency
             batch_size = interaction_logs.aux["acc"].size()[0]
             mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
@@ -151,11 +151,8 @@ def main(args):
     args.sender_cell = "lstm"
     args.receiver_cell = "lstm"
     args.vocab_size = len(vocab)
-    args.max_len = 1
+    args.max_len = 25
     args.random_seed = 1
-
-    # TODO
-    n_features = args.sender_embedding
 
     word_embedding_size = 100
     joint_embeddings_size = 512
