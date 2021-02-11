@@ -124,9 +124,6 @@ def main(args):
     print(f"Val loss: {val_loss:.3f}")
     print(f"Val acc: {interactions.aux['acc'].mean():.3f}")
 
-    debugger = PrintDebugEvents(val_dataset, args)
-    debugger.print_sample_interactions(interactions)
-
     core.close()
 
 
