@@ -4,12 +4,14 @@ import pickle
 import torch.nn as nn
 import torch
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence, pad_packed_sequence
+from torchtext.vocab import Vocab
 from torchvision.models import resnet50
 from torch.autograd import Variable
 
 import numpy as np
 
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
+from egg.zoo.visual_ref.utils import SPECIAL_CHARACTERS
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -346,7 +348,7 @@ class ImageCaptioner(nn.Module):
 
 
 class VisualRefSpeakerDiscriminativeOracle(nn.Module):
-    def __init__(self, data_folder, captions_filename, max_sequence_length):
+    def __init__(self, data_folder, captions_filename, max_sequence_length, vocab):
         super(VisualRefSpeakerDiscriminativeOracle, self).__init__()
 
         # Load captions
@@ -360,6 +362,9 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
             self.captions_test = pickle.load(file)
 
         self.max_sequence_length = max_sequence_length
+
+        self.vocab = vocab
+        self.ignore_tokens = [vocab.stoi[s] for s in [Vocab.UNK] + SPECIAL_CHARACTERS]
 
     def pad_messages(self, messages, padding_value=0.0):
         """Trim and pad all messages to max sequence length."""
@@ -377,18 +382,37 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
 
     def forward(self, input):
         # input: target_image, distractor_image
-        images, target_label, target_image_id, distractor_image_id = input
+        images, target_label, target_image_ids, distractor_image_ids = input
+
+        # pick the target's caption that has the least word overlap with any of the distractor's captions
+        # (the score is normalized by the captions’ length excluding stop-words)
+        def get_relevant_tokens(caption):
+            return set([t for t in caption if t not in self.ignore_tokens])
 
         if self.training:
-            #TODO: choose best caption
-            output_captions = [self.captions_train[int(i)][0] for i in target_image_id]
+            captions = self.captions_train
         else:
-            output_captions = [self.captions_val[int(i)][0] for i in target_image_id]
             # TODO test mode
-            # output_captions = [self.captions_test[int(i)][0] for i in target_image_id]
+            captions = self.captions_val
+
+        output_captions = []
+        for target_image_id, distractor_image_id in zip(target_image_ids, distractor_image_ids):
+            overlap_scores = []
+            for target_caption in captions[int(target_image_id)]:
+                overlap_score = 0
+                target_caption_tokens = get_relevant_tokens(target_caption)
+
+                distractor_captions = [t for caption in captions[int(distractor_image_id)] for t in caption]
+                distractor_captions_tokens = get_relevant_tokens(distractor_captions)
+
+                overlap = len(target_caption_tokens & distractor_captions_tokens)
+                overlap_scores.append(overlap / len(target_caption_tokens))
+
+            best_caption_idx = np.argmin(overlap_scores)
+            best_caption = captions[int(target_image_id)][best_caption_idx]
+            output_captions.append(best_caption)
 
         # append end of message token
-        # TODO: currently overlap with padding
         for caption in output_captions:
             caption.append(0)
 

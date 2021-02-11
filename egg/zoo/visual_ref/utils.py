@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 
 SPECIAL_CHARACTERS = [TOKEN_START, TOKEN_END, TOKEN_PADDING]
 
-
 def decode_caption(caption, vocab):
     words = [vocab.itos[word] for word in caption if vocab.itos[word] not in SPECIAL_CHARACTERS]
     return " ".join(words)
