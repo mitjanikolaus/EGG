@@ -95,25 +95,25 @@ def main(params):
     def validate_model(model, dataloader):
         print(f"EVAL")
         model.eval()
+        with torch.no_grad():
+            val_losses = []
+            val_accuracies = []
+            for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
+                images_embedded, captions_embedded = model_ranking(
+                    images, captions, caption_lengths
+                )
 
-        val_losses = []
-        val_accuracies = []
-        for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
-            images_embedded, captions_embedded = model_ranking(
-                images, captions, caption_lengths
-            )
+                acc = model_ranking.accuracy_discrimination(images_embedded, captions_embedded)
+                val_accuracies.append(acc)
 
-            acc = model_ranking.accuracy_discrimination(images_embedded, captions_embedded)
-            val_accuracies.append(acc)
+                loss = model_ranking.loss(images_embedded, captions_embedded)
+                val_losses.append(loss.mean().item())
 
-            loss = model_ranking.loss(images_embedded, captions_embedded)
-            val_losses.append(loss.mean().item())
+            val_loss = np.mean(val_losses)
+            print(f"val loss: {val_loss}")
 
-        val_loss = np.mean(val_losses)
-        print(f"val loss: {val_loss}")
-
-        val_acc = np.mean(val_accuracies)
-        print(f"val acc: {val_acc}")
+            val_acc = np.mean(val_accuracies)
+            print(f"val acc: {val_acc}")
 
         model.train()
         return val_loss, val_acc
