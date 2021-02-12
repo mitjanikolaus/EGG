@@ -29,6 +29,7 @@ CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_re
 
 PRINT_SAMPLE_CAPTIONS = 5
 
+
 def print_model_output(output, target_captions, image_ids, vocab, num_captions=1):
     captions_model = torch.argmax(output, dim=1)
     for i in range(num_captions):
@@ -37,6 +38,7 @@ def print_model_output(output, target_captions, image_ids, vocab, num_captions=1
         print_caption(target_captions[i], vocab)
         print("Model output: ", end="")
         print_caption(captions_model[i], vocab)
+
 
 def print_sample_model_output(model, dataloader, vocab, num_captions=1):
     images, captions, caption_lengths, image_ids = next(iter(dataloader))
@@ -104,18 +106,18 @@ def main(args):
     def validate_model(model, dataloader):
         print(f"EVAL")
         model.eval()
+        with torch.no_grad():
+            print_sample_model_output(model, dataloader, vocab, PRINT_SAMPLE_CAPTIONS)
 
-        print_sample_model_output(model, dataloader, vocab, PRINT_SAMPLE_CAPTIONS)
+            val_losses = []
+            for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
+                output, decode_lengths = model.forward_decode(images, decode_type="sample")
 
-        val_losses = []
-        for batch_idx, (images, captions, caption_lengths, _) in enumerate(dataloader):
-            output, decode_lengths = model.forward_decode(images, decode_type="sample")
+                loss = model.calc_loss(output, captions, caption_lengths)
 
-            loss = model.calc_loss(output, captions, caption_lengths)
+                val_losses.append(loss.mean().item())
 
-            val_losses.append(loss.mean().item())
-
-        val_loss = np.mean(val_losses)
+            val_loss = np.mean(val_losses)
 
         model.train()
         return val_loss
