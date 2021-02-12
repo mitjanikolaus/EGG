@@ -10,7 +10,10 @@ except ImportError:
     from contextlib import suppress as nullcontext
 
 import torch
-from torch.cuda.amp import autocast
+try:
+    from torch.cuda.amp import GradScaler, autocast
+except ImportError:
+    pass
 from torch.utils.data import DataLoader
 
 from egg.core import Trainer, Callback, Interaction, move_to, get_opts
