@@ -1,3 +1,4 @@
+import math
 import os
 import pathlib
 from typing import List, Optional
@@ -18,6 +19,9 @@ from torch.utils.data import DataLoader
 
 from egg.core import Trainer, Callback, Interaction, move_to, get_opts
 
+CHECKPOINT_PATH_LISTENER_ORACLE = os.path.join(
+    pathlib.Path.home(), "data/egg/visual_ref/checkpoints/listener_oracle.pt"
+)
 
 class VisualRefTrainer(Trainer):
     """
@@ -39,6 +43,18 @@ class VisualRefTrainer(Trainer):
         super(VisualRefTrainer, self).__init__(game, optimizer, train_data, validation_data, device, callbacks, grad_norm, aggregate_interaction_logs)
         common_opts = get_opts()
         self.eval_frequency = common_opts.eval_frequency
+
+        self.best_val_loss = math.inf
+
+    def save_model(self):
+        torch.save(
+            {
+                "listener_state_dict": self.game.receiver.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "loss": self.best_val_loss,
+            },
+            CHECKPOINT_PATH_LISTENER_ORACLE,
+        )
 
     def train_epoch(self):
         mean_loss = 0
@@ -99,6 +115,12 @@ class VisualRefTrainer(Trainer):
             if batch_id % self.eval_frequency == self.eval_frequency - 1:
                 val_loss, val_interactions = self.eval()
                 print(f"Batch {batch_id} | Val loss: {val_loss:.3f} | Val acc: {val_interactions.aux['acc'].mean():.3f}\n")
+
+                if val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    self.save_model()
+
+                self.game.train()
 
         mean_loss /= n_batches
         full_interaction = Interaction.from_iterable(interactions)
