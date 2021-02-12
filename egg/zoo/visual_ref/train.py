@@ -29,12 +29,13 @@ from egg.zoo.visual_ref.preprocess import (
 from egg.zoo.visual_ref.train_image_sentence_ranking import (
     CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING,
 )
+from egg.zoo.visual_ref.trainers import VisualRefTrainer
 from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PrintDebugEvents(Callback):
-    def __init__(self, train_dataset, args):
+    def __init__(self, train_dataset, val_dataset, args):
         super().__init__()
 
         vocab_path = os.path.join(DATA_PATH, VOCAB_FILENAME)
@@ -46,6 +47,7 @@ class PrintDebugEvents(Callback):
         self.args = args
 
         self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
 
     def print_sample_interactions(self, interaction_logs, num_interactions=5):
         target_image_ids, distractor_image_ids = interaction_logs.sender_input
@@ -89,20 +91,24 @@ class PrintDebugEvents(Callback):
         self.train_loss += loss.detach()
         self.train_accuracies += interaction_logs.aux["acc"].sum()
 
-        if (batch_id + 1) % self.args.log_frequency == 0:
-            mean_loss = self.train_loss / self.args.log_frequency
-            batch_size = interaction_logs.aux["acc"].size()[0]
-            mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
+        if is_training:
+            if (batch_id + 1) % self.args.log_frequency == 0:
+                mean_loss = self.train_loss / self.args.log_frequency
+                batch_size = interaction_logs.aux["acc"].size()[0]
+                mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
 
-            print(
-                f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}"
-            )
+                print(
+                    f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}"
+                )
 
-            self.train_loss = 0
-            self.train_accuracies = 0
+                # validate model
 
-            if self.args.debug:
-                self.print_sample_interactions(interaction_logs)
+
+                self.train_loss = 0
+                self.train_accuracies = 0
+
+                if self.args.debug:
+                    self.print_sample_interactions(interaction_logs)
 
 
 def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
@@ -125,10 +131,11 @@ def main(args):
         num_workers=0,
         pin_memory=False,
     )
-    val_loader = DataLoader(
-        VisualRefCaptionDataset(
+    val_dataset = VisualRefCaptionDataset(
             DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"], args.batch_size
-        ),
+    )
+    val_loader = DataLoader(
+        val_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
@@ -170,14 +177,9 @@ def main(args):
     sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len, vocab)
     receiver = VisualRefListenerOracle(ranking_model)
 
-    # sender = core.RnnSenderReinforce(sender, vocab_size=opts.vocab_size, embed_dim=opts.sender_embedding,
-    #                                  hidden_size=opts.sender_hidden, cell=opts.sender_cell, max_len=opts.max_len)
-    # receiver = core.RnnReceiverDeterministic(receiver, vocab_size=opts.vocab_size, embed_dim=opts.receiver_embedding,
-    #                                          hidden_size=opts.receiver_hidden, cell=opts.receiver_cell)
-
-    # use LoggingStrategy that stores image IDs
-    # train_logging_strategy = LoggingStrategy(store_sender_input=False, store_receiver_input=False)
+    # use custom LoggingStrategy that stores image IDs
     train_logging_strategy = VisualRefLoggingStrategy()
+
     game = OracleSenderReceiverRnnSupervised(
         sender,
         receiver,
@@ -188,11 +190,11 @@ def main(args):
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
     # core.PrintValidationEvents(n_epochs=1)
-    callbacks.append(PrintDebugEvents(train_dataset, args))
+    callbacks.append(PrintDebugEvents(train_dataset, val_dataset, args))
 
     optimizer = core.build_optimizer(game.parameters())
 
-    trainer = core.Trainer(
+    trainer = VisualRefTrainer(
         game=game,
         optimizer=optimizer,
         train_data=train_loader,
@@ -223,6 +225,12 @@ def get_args():
         default=100,
         type=int,
         help="Logging frequency (number of batches)",
+    )
+    parser.add_argument(
+        "--eval-frequency",
+        default=100,
+        type=int,
+        help="Evaluation frequency (number of batches)",
     )
 
     # initialize the egg lib
