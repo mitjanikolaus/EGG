@@ -92,7 +92,7 @@ class PrintDebugEvents(Callback):
         self.train_accuracies += interaction_logs.aux["acc"].sum()
 
         if is_training:
-            if (batch_id + 1) % self.args.log_frequency == 0:
+            if batch_id % self.args.log_frequency == self.args.log_frequency - 1:
                 mean_loss = self.train_loss / self.args.log_frequency
                 batch_size = interaction_logs.aux["acc"].size()[0]
                 mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
@@ -100,9 +100,6 @@ class PrintDebugEvents(Callback):
                 print(
                     f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}"
                 )
-
-                # validate model
-
 
                 self.train_loss = 0
                 self.train_accuracies = 0

@@ -114,7 +114,7 @@ class VisualRefTrainer(Trainer):
 
             if batch_id % self.eval_frequency == self.eval_frequency - 1:
                 val_loss, val_interactions = self.eval()
-                print(f"Batch {batch_id} | Val loss: {val_loss:.3f} | Val acc: {val_interactions.aux['acc'].mean():.3f}\n")
+                print(f"Batch {batch_id+1} | Val loss: {val_loss:.3f} | Val acc: {val_interactions.aux['acc'].mean():.3f}\n")
 
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
