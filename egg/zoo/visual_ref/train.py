@@ -178,14 +178,15 @@ def main(args):
     receiver = VisualRefListenerOracle(ranking_model)
 
     # use custom LoggingStrategy that stores image IDs
-    train_logging_strategy = VisualRefLoggingStrategy()
+    logging_strategy = VisualRefLoggingStrategy()
 
     game = OracleSenderReceiverRnnSupervised(
         sender,
         receiver,
         loss,
         receiver_entropy_coeff=args.receiver_entropy_coeff,
-        train_logging_strategy=train_logging_strategy,
+        train_logging_strategy=logging_strategy,
+        test_logging_strategy=logging_strategy
     )
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]

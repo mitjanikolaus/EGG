@@ -97,8 +97,8 @@ class VisualRefTrainer(Trainer):
             interactions.append(interaction)
 
             if batch_id % self.eval_frequency == self.eval_frequency - 1:
-                val_loss, interactions = self.eval()
-                print(f"Batch {batch_id} | Val loss: {val_loss:.3f} | Val acc: {interactions.aux['acc'].mean():.3f}\n")
+                val_loss, val_interactions = self.eval()
+                print(f"Batch {batch_id} | Val loss: {val_loss:.3f} | Val acc: {val_interactions.aux['acc'].mean():.3f}\n")
 
         mean_loss /= n_batches
         full_interaction = Interaction.from_iterable(interactions)
