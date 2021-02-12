@@ -85,7 +85,7 @@ def main(params):
     with open(vocab_path, "rb") as file:
         vocab = pickle.load(file)
 
-    word_embedding_size = 100
+    word_embedding_size = 512
     visual_embedding_size = 512
     lstm_hidden_size = 512
     model_image_captioning = ImageCaptioner(word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab,

@@ -217,7 +217,7 @@ class ImageCaptioner(nn.Module):
         #TODO no word embeddings used in paper?
         self.word_embedding = nn.Embedding(self.vocab_size, word_embedding_size)
 
-        self.lstm = nn.LSTM(input_size=word_embedding_size + visual_embedding_size, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(input_size=visual_embedding_size, hidden_size=lstm_hidden_size, num_layers=1, batch_first=True)
         self.fc = nn.Linear(lstm_hidden_size, self.vocab_size)
 
         self.loss_function = torch.nn.CrossEntropyLoss(ignore_index=0)
@@ -241,12 +241,20 @@ class ImageCaptioner(nn.Module):
         captions = captions[:, :-1]
         caption_lengths = [l-1 for l in caption_lengths]
 
+        # cut off <sos> token as we have the image features as start of sequence token
+        captions = captions[:, 1:]
+        caption_lengths = [l - 1 for l in caption_lengths]
+
         embedded_captions = self.word_embedding(captions)
 
-        image_features = image_features.unsqueeze(dim=1).repeat(1, embedded_captions.shape[1], 1)
+        # unsqueeze time dimension
+        image_features = image_features.unsqueeze(dim=1)
 
-        inputs = torch.cat((image_features, embedded_captions), dim=2)
-        packed_inputs = pack_padded_sequence(inputs, caption_lengths, enforce_sorted=False, batch_first=True)
+        # first input to lstm are the image features
+        inputs = torch.cat((image_features, embedded_captions), dim=1)
+        sequence_lengths = [l + 1 for l in caption_lengths]
+
+        packed_inputs = pack_padded_sequence(inputs, sequence_lengths, enforce_sorted=False, batch_first=True)
 
         lstm_out, hidden = self.lstm(packed_inputs, hidden)
         output, _ = pad_packed_sequence(lstm_out, batch_first=True)
@@ -283,15 +291,13 @@ class ImageCaptioner(nn.Module):
             (batch_size, max(decode_lengths), self.vocab_size), device=device
         )
 
-        # At the start, all 'previous words' are the <start> token
-        prev_words = torch.full(
-            (batch_size,), self.vocab.stoi[TOKEN_START], dtype=torch.int64, device=device
-        )
+        # At the start, all inputs are the image features
+        input_next_timestep = image_features
 
         for t in range(max(decode_lengths)):
             # Find all sequences where an <end> token has been produced in the last timestep
             ind_end_token = (
-                torch.nonzero(prev_words == self.vocab.stoi[TOKEN_END])
+                torch.nonzero(input_next_timestep == self.vocab.stoi[TOKEN_END])
                 .view(-1)
                 .tolist()
             )
@@ -307,14 +313,12 @@ class ImageCaptioner(nn.Module):
             if len(indices_incomplete_sequences) == 0:
                 break
 
-            # Embed input words
-            prev_words_embedded = self.word_embedding(prev_words)
-
-            # Concatenate input: image features and word embeddings
-            inputs = torch.cat((image_features, prev_words_embedded), dim=1)
+            if t > 0:
+                # Embed input words
+                input_next_timestep = self.word_embedding(input_next_timestep)
 
             # Unsqueeze time dimension (1 timestep)
-            inputs = inputs.unsqueeze(1)
+            inputs = input_next_timestep.unsqueeze(1)
 
             # LSTM forward pass
             lstm_out, hidden = self.lstm(inputs, hidden)
@@ -324,10 +328,10 @@ class ImageCaptioner(nn.Module):
             # Update the previously predicted words
             if decode_type == "greedy":
                 # greedy decode
-                prev_words = torch.argmax(scores_for_timestep, dim=1)
+                input_next_timestep = torch.argmax(scores_for_timestep, dim=1)
             else:
                 # sample from the distribution
-                prev_words = torch.multinomial(torch.softmax(scores_for_timestep, -1), 1).squeeze()
+                input_next_timestep = torch.multinomial(torch.softmax(scores_for_timestep, -1), 1).squeeze()
 
             scores[indices_incomplete_sequences, t, :] = scores_for_timestep[
                 indices_incomplete_sequences
@@ -338,7 +342,7 @@ class ImageCaptioner(nn.Module):
 
 
     def calc_loss(self, scores, target_captions, caption_lengths):
-        # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
+        # Since we decoded starting with the image features, the targets are all words after <start>, up to <end>
         target_captions = target_captions[:, 1:]
 
         # Trim produced captions' lengths to target lengths for loss calculation
@@ -399,7 +403,6 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         for target_image_id, distractor_image_id in zip(target_image_ids, distractor_image_ids):
             overlap_scores = []
             for target_caption in captions[int(target_image_id)]:
-                overlap_score = 0
                 target_caption_tokens = get_relevant_tokens(target_caption)
 
                 distractor_captions = [t for caption in captions[int(distractor_image_id)] for t in caption]
