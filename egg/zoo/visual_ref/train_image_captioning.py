@@ -1,6 +1,7 @@
 
 from __future__ import print_function
 
+import argparse
 import math
 import pickle
 import sys
@@ -26,8 +27,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CHECKPOINT_PATH_IMAGE_CAPTIONING = os.path.join(Path.home(), "data/egg/visual_ref/checkpoints/image_captioning.pt")
 
 
-VAL_INTERVAL = 100
-
 PRINT_SAMPLE_CAPTIONS = 5
 
 def print_model_output(output, target_captions, image_ids, vocab, num_captions=1):
@@ -47,10 +46,7 @@ def print_sample_model_output(model, dataloader, vocab, num_captions=1):
     print_model_output(output, captions, image_ids, vocab, num_captions)
 
 
-def main(params):
-    # initialize the egg lib
-    opts = core.init(params=params)
-
+def main(args):
     # create model checkpoint directory
     if not os.path.exists(os.path.dirname(CHECKPOINT_PATH_IMAGE_CAPTIONING)):
         os.makedirs(os.path.dirname(CHECKPOINT_PATH_IMAGE_CAPTIONING))
@@ -61,7 +57,7 @@ def main(params):
             IMAGES_FILENAME["train"],
             CAPTIONS_FILENAME["train"],
         ),
-        batch_size=opts.batch_size,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -73,7 +69,7 @@ def main(params):
             IMAGES_FILENAME["val"],
             CAPTIONS_FILENAME["val"],
         ),
-        batch_size=opts.batch_size,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=False,
@@ -89,7 +85,7 @@ def main(params):
     visual_embedding_size = 512
     lstm_hidden_size = 512
     model_image_captioning = ImageCaptioner(word_embedding_size, visual_embedding_size, lstm_hidden_size, vocab,
-                                            MAX_CAPTION_LEN, fine_tune_resnet=False)
+                                            MAX_CAPTION_LEN, fine_tune_resnet=args.fine_tune_resnet)
 
     # uses command-line parameters we passed to core.init
     optimizer = core.build_optimizer(model_image_captioning.parameters())
@@ -120,13 +116,12 @@ def main(params):
             val_losses.append(loss.mean().item())
 
         val_loss = np.mean(val_losses)
-        print(f"val loss: {val_loss}")
 
         model.train()
         return val_loss
 
     best_val_loss = math.inf
-    for epoch in range(opts.n_epochs):
+    for epoch in range(args.n_epochs):
         losses = []
         for batch_idx, (images, captions, caption_lengths, _) in enumerate(train_loader):
             output = model_image_captioning(images, captions, caption_lengths)
@@ -138,23 +133,46 @@ def main(params):
             loss.backward()
             optimizer.step()
 
-            if batch_idx % VAL_INTERVAL == 0:
-                print(f"Batch {batch_idx}: train loss: {np.mean(losses)}")
+            if batch_idx % args.log_frequency == 0:
                 val_loss = validate_model(model_image_captioning, val_images_loader)
+                print(f"Batch {batch_idx}: train loss: {np.mean(losses)} | val loss: {val_loss}")
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     save_model(model_image_captioning, optimizer, best_val_loss, epoch)
 
-        print(f'Train Epoch: {epoch}, train loss: {np.mean(losses)}')
         val_loss = validate_model(model_image_captioning, val_images_loader)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_model(model_image_captioning, optimizer, best_val_loss, epoch)
+        print(f'End of epoch: {epoch} | train loss: {np.mean(losses)} | best val loss: {best_val_loss}\n\n')
 
     core.close()
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--fine-tune-resnet",
+        default=False,
+        action="store_true",
+        help="Fine tune the ResNet module.",
+    )
+    parser.add_argument(
+        "--log-frequency",
+        default=100,
+        type=int,
+        help="Logging frequency (number of batches)",
+    )
+
+    # initialize the egg lib
+    # get pre-defined common line arguments (batch/vocab size, etc).
+    # See egg/core/util.py for a list
+    args = core.init(parser)
+
+    return args
 
 
 if __name__ == "__main__":
     print("Start training on device: ", device)
-    main(sys.argv[1:])
+    args = get_args()
+    main(args)
 
