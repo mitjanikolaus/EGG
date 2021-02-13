@@ -84,15 +84,15 @@ class PrintDebugEvents(Callback):
         batch_id: int,
         is_training: bool = True,
     ):
-        if batch_id == 0:
-            self.train_loss = 0
-            self.train_accuracies = 0
-
-        self.train_loss += loss.detach()
-        self.train_accuracies += interaction_logs.aux["acc"].sum()
-
         if is_training:
-            if batch_id % self.args.log_frequency == self.args.log_frequency - 1:
+            if batch_id == 0:
+                self.train_loss = 0
+                self.train_accuracies = 0
+
+            self.train_loss += loss.detach()
+            self.train_accuracies += interaction_logs.aux["acc"].sum()
+
+            if (batch_id % self.args.log_frequency) == (self.args.log_frequency - 1):
                 mean_loss = self.train_loss / self.args.log_frequency
                 batch_size = interaction_logs.aux["acc"].size()[0]
                 mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)

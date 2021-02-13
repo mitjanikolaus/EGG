@@ -11,6 +11,7 @@ except ImportError:
     from contextlib import suppress as nullcontext
 
 import torch
+
 try:
     from torch.cuda.amp import GradScaler, autocast
 except ImportError:
@@ -22,6 +23,7 @@ from egg.core import Trainer, Callback, Interaction, move_to, get_opts
 CHECKPOINT_PATH_LISTENER_ORACLE = os.path.join(
     pathlib.Path.home(), "data/egg/visual_ref/checkpoints/listener_oracle.pt"
 )
+
 
 class VisualRefTrainer(Trainer):
     """
@@ -40,7 +42,16 @@ class VisualRefTrainer(Trainer):
         grad_norm: float = None,
         aggregate_interaction_logs: bool = True,
     ):
-        super(VisualRefTrainer, self).__init__(game, optimizer, train_data, validation_data, device, callbacks, grad_norm, aggregate_interaction_logs)
+        super(VisualRefTrainer, self).__init__(
+            game,
+            optimizer,
+            train_data,
+            validation_data,
+            device,
+            callbacks,
+            grad_norm,
+            aggregate_interaction_logs,
+        )
         common_opts = get_opts()
         self.eval_frequency = common_opts.eval_frequency
 
@@ -114,7 +125,10 @@ class VisualRefTrainer(Trainer):
 
             if batch_id % self.eval_frequency == self.eval_frequency - 1:
                 val_loss, val_interactions = self.eval()
-                print(f"Batch {batch_id+1} | Val loss: {val_loss:.3f} | Val acc: {val_interactions.aux['acc'].mean():.3f}\n")
+                print(
+                    f"Batch {batch_id+1} | Val loss: {val_loss:.3f} "
+                    f"| Val acc: {val_interactions.aux['acc'].mean():.3f}\n"
+                )
 
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
@@ -125,4 +139,3 @@ class VisualRefTrainer(Trainer):
         mean_loss /= n_batches
         full_interaction = Interaction.from_iterable(interactions)
         return mean_loss.item(), full_interaction
-
