@@ -20,9 +20,10 @@ from torch.utils.data import DataLoader
 
 from egg.core import Trainer, Callback, Interaction, move_to, get_opts
 
-CHECKPOINT_PATH_LISTENER_ORACLE = os.path.join(
-    pathlib.Path.home(), "data/egg/visual_ref/checkpoints/listener_oracle.pt"
-)
+CHECKPOINT_DIR = os.path.join(pathlib.Path.home(), "data/egg/visual_ref/checkpoints")
+
+CHECKPOINT_PATH_LISTENER_ORACLE = os.path.join(CHECKPOINT_DIR, "listener_oracle.pt")
+
 
 
 class VisualRefTrainer(Trainer):
@@ -54,17 +55,26 @@ class VisualRefTrainer(Trainer):
         )
         common_opts = get_opts()
         self.eval_frequency = common_opts.eval_frequency
+        self.sender = common_opts.sender
 
         self.best_val_loss = math.inf
 
-    def save_model(self):
+    def save_models(self):
         torch.save(
             {
-                "listener_state_dict": self.game.receiver.state_dict(),
+                "model_state_dict": self.game.receiver.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "loss": self.best_val_loss,
             },
             CHECKPOINT_PATH_LISTENER_ORACLE,
+        )
+        torch.save(
+            {
+                "model_state_dict": self.game.sender.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "loss": self.best_val_loss,
+            },
+            os.path.join(CHECKPOINT_DIR, f"speaker_{self.sender}.pt"),
         )
 
     def train_epoch(self):
@@ -132,7 +142,7 @@ class VisualRefTrainer(Trainer):
 
                 if val_loss < self.best_val_loss:
                     self.best_val_loss = val_loss
-                    self.save_model()
+                    self.save_models()
 
                 self.game.train()
 

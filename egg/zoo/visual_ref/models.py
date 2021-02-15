@@ -3,13 +3,16 @@ import pickle
 
 import torch.nn as nn
 import torch
+from torch.distributions import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence, pad_packed_sequence
 from torchtext.vocab import Vocab
 from torchvision.models import resnet50
 from torch.autograd import Variable
+import torch.nn.functional as F
 
 import numpy as np
 
+from egg.core import RnnSenderReinforce
 from egg.zoo.visual_ref.preprocess import TOKEN_START, TOKEN_END
 from egg.zoo.visual_ref.utils import SPECIAL_CHARACTERS
 
@@ -385,7 +388,6 @@ class VisualRefSpeakerDiscriminativeOracle(nn.Module):
         return out_tensor
 
     def forward(self, input):
-        # input: target_image, distractor_image
         images, target_label, target_image_ids, distractor_image_ids = input
 
         # pick the target's caption that has the least word overlap with any of the distractor's captions
@@ -449,3 +451,85 @@ class VisualRefListenerOracle(nn.Module):
 
         # out: scores, logits, entropy
         return similarities.view(batch_size, -1),  None, None
+
+
+class VisualRefSenderFunctional(nn.Module):
+    def __init__(self, visual_embedding_size, fine_tune_resnet=False):
+        super(VisualRefSenderFunctional, self).__init__()
+
+        resnet = resnet50(pretrained=True)
+
+        if not fine_tune_resnet:
+            for param in resnet.parameters():
+                param.requires_grad = False
+
+        modules = list(resnet.children())[:-1]
+        self.resnet = nn.Sequential(*modules)
+
+        self.embed = nn.Linear(resnet.fc.in_features, visual_embedding_size)
+
+    def forward(self, input):
+        images, target_label, target_image_ids, distractor_image_ids = input
+        images_target, images_receiver = images
+
+        image_features = self.resnet(images_target)
+        image_features = image_features.view(image_features.size(0), -1)
+        image_features = self.embed(image_features)
+
+        # output is used to initialize the message producing RNN
+        return image_features
+
+class RnnSenderReinforceVisualRef(RnnSenderReinforce):
+
+    def forward(self, x):
+        prev_hidden = [self.agent(x)]
+        prev_hidden.extend(
+            [torch.zeros_like(prev_hidden[0]) for _ in range(self.num_layers - 1)]
+        )
+
+        prev_c = [
+            torch.zeros_like(prev_hidden[0]) for _ in range(self.num_layers)
+        ]  # only used for LSTM
+
+        input = torch.stack([self.sos_embedding] * prev_hidden[0].size(0))
+
+        sequence = []
+        logits = []
+        entropy = []
+
+        for step in range(self.max_len):
+            for i, layer in enumerate(self.cells):
+                if isinstance(layer, nn.LSTMCell):
+                    h_t, c_t = layer(input, (prev_hidden[i], prev_c[i]))
+                    prev_c[i] = c_t
+                else:
+                    h_t = layer(input, prev_hidden[i])
+                prev_hidden[i] = h_t
+                input = h_t
+
+            step_logits = F.log_softmax(self.hidden_to_output(h_t), dim=1)
+            distr = Categorical(logits=step_logits)
+            entropy.append(distr.entropy())
+
+            if self.training:
+                x = distr.sample()
+            else:
+                x = step_logits.argmax(dim=1)
+            logits.append(distr.log_prob(x))
+
+            input = self.embedding(x)
+            sequence.append(x)
+
+        sequence = torch.stack(sequence).permute(1, 0)
+        logits = torch.stack(logits).permute(1, 0)
+        entropy = torch.stack(entropy).permute(1, 0)
+
+        zeros = torch.zeros((sequence.size(0), 1)).to(sequence.device)
+
+        sequence = torch.cat([sequence, zeros.long()], dim=1)
+        logits = torch.cat([logits, zeros], dim=1)
+        entropy = torch.cat([entropy, zeros], dim=1)
+
+        return sequence, logits, entropy
+
+

@@ -19,6 +19,8 @@ from egg.zoo.visual_ref.models import (
     VisualRefSpeakerDiscriminativeOracle,
     VisualRefListenerOracle,
     ImageSentenceRanker,
+    VisualRefSenderFunctional,
+    RnnSenderReinforceVisualRef,
 )
 from egg.zoo.visual_ref.preprocess import (
     DATA_PATH,
@@ -33,6 +35,7 @@ from egg.zoo.visual_ref.trainers import VisualRefTrainer
 from egg.zoo.visual_ref.utils import decode_caption, VisualRefLoggingStrategy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class PrintDebugEvents(Callback):
     def __init__(self, train_dataset, val_dataset, args):
@@ -49,30 +52,37 @@ class PrintDebugEvents(Callback):
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
 
-    def print_sample_interactions(self, interaction_logs, num_interactions=5):
+    def print_sample_interactions(
+        self, interaction_logs, show_images, num_interactions=5
+    ):
         target_image_ids, distractor_image_ids = interaction_logs.sender_input
         for z in range(num_interactions):
-            target_image = self.train_dataset.get_image_features(
-                int(target_image_ids[z]), channels_first=False, normalize=False
-            )
-            distractor_image = self.train_dataset.get_image_features(
-                int(distractor_image_ids[z]), channels_first=False, normalize=False
-            )
-
-            # plot the two images side-by-side
-            image = torch.cat([target_image, distractor_image], dim=1).cpu().numpy()
-
+            message = decode_caption(interaction_logs.message[z], self.vocab)
             target_position = interaction_logs.labels[z]
             receiver_guess = torch.argmax(interaction_logs.receiver_output[z])
 
-            message = decode_caption(interaction_logs.message[z], self.vocab)
-            plt.title(
-                f"Left: Target, Right: Distractor"
-                f"\nReceiver guess correct: {target_position == receiver_guess}"
-                f"\nMessage: {message}"
-            )
-            plt.imshow(image)
-            plt.show()
+            if show_images:
+                # plot the two images side-by-side
+                target_image = self.train_dataset.get_image_features(
+                    int(target_image_ids[z]), channels_first=False, normalize=False
+                )
+                distractor_image = self.train_dataset.get_image_features(
+                    int(distractor_image_ids[z]), channels_first=False, normalize=False
+                )
+                image = torch.cat([target_image, distractor_image], dim=1).cpu().numpy()
+
+                plt.title(
+                    f"Left: Target, Right: Distractor"
+                    f"\nReceiver guess correct: {target_position == receiver_guess}"
+                    f"\nMessage: {message}"
+                )
+                plt.imshow(image)
+                plt.show()
+            else:
+                print(
+                    f"Target image ID: {target_image_ids[z]} | Distractor image ID: {distractor_image_ids[z]} | "
+                    f"Success: {target_position == receiver_guess} | Message: {message}"
+                )
 
     def on_test_end(self, _loss, interaction_logs: Interaction, epoch: int):
         pass
@@ -95,7 +105,9 @@ class PrintDebugEvents(Callback):
             if (batch_id % self.args.log_frequency) == (self.args.log_frequency - 1):
                 mean_loss = self.train_loss / self.args.log_frequency
                 batch_size = interaction_logs.aux["acc"].size()[0]
-                mean_acc = self.train_accuracies / (self.args.log_frequency * batch_size)
+                mean_acc = self.train_accuracies / (
+                    self.args.log_frequency * batch_size
+                )
 
                 print(
                     f"Batch {batch_id + 1}: loss: {mean_loss:.3f} accuracy: {mean_acc:.3f}"
@@ -104,8 +116,14 @@ class PrintDebugEvents(Callback):
                 self.train_loss = 0
                 self.train_accuracies = 0
 
-                if self.args.debug:
-                    self.print_sample_interactions(interaction_logs)
+                if (
+                    self.args.print_sample_interactions
+                    or self.args.print_sample_interactions_images
+                ):
+                    self.print_sample_interactions(
+                        interaction_logs,
+                        show_images=self.args.print_sample_interactions_images,
+                    )
 
 
 def loss(_sender_input, _message, _receiver_input, receiver_output, labels):
@@ -129,7 +147,7 @@ def main(args):
         pin_memory=False,
     )
     val_dataset = VisualRefCaptionDataset(
-            DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"], args.batch_size
+        DATA_PATH, IMAGES_FILENAME["val"], CAPTIONS_FILENAME["val"], args.batch_size
     )
     val_loader = DataLoader(
         val_dataset,
@@ -146,7 +164,7 @@ def main(args):
 
     # TODO
     # TODO: embedding size for speaker is 1024 in paper
-    args.sender_hidden = 1024  # TODO
+    args.sender_hidden = 512  # TODO
     args.sender_embedding = 512  # ???
     args.receiver_embedding = 100  # ???
     args.receiver_hidden = 512  # ???
@@ -161,18 +179,52 @@ def main(args):
     word_embedding_size = 100
     joint_embeddings_size = 512
     lstm_hidden_size = 512
-    checkpoint_ranking_model = torch.load(CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING, map_location=device)
-    ranking_model = ImageSentenceRanker(
-        word_embedding_size,
-        joint_embeddings_size,
-        lstm_hidden_size,
-        len(vocab),
-        fine_tune_resnet=False,
-    )
-    ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
 
-    sender = VisualRefSpeakerDiscriminativeOracle(DATA_PATH, CAPTIONS_FILENAME, args.max_len, vocab)
-    receiver = VisualRefListenerOracle(ranking_model)
+    if args.receiver_checkpoint:
+        checkpoint_listener = torch.load(args.receiver_checkpoint, map_location=device)
+        ranking_model = ImageSentenceRanker(
+            word_embedding_size,
+            joint_embeddings_size,
+            lstm_hidden_size,
+            len(vocab),
+            fine_tune_resnet=False,
+        )
+        receiver = VisualRefListenerOracle(ranking_model)
+        receiver.load_state_dict(checkpoint_listener["listener_state_dict"])
+    else:
+        checkpoint_ranking_model = torch.load(
+            CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING, map_location=device
+        )
+        ranking_model = ImageSentenceRanker(
+            word_embedding_size,
+            joint_embeddings_size,
+            lstm_hidden_size,
+            len(vocab),
+            fine_tune_resnet=False,
+        )
+        ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
+        receiver = VisualRefListenerOracle(ranking_model)
+
+    if args.sender == "oracle":
+        sender = VisualRefSpeakerDiscriminativeOracle(
+            DATA_PATH, CAPTIONS_FILENAME, args.max_len, vocab
+        )
+
+    elif args.sender == "functional":
+        sender = VisualRefSenderFunctional(
+            joint_embeddings_size, fine_tune_resnet=False
+        )
+        sender = RnnSenderReinforceVisualRef(
+            sender,
+            vocab_size=args.vocab_size,
+            embed_dim=args.sender_embedding,
+            hidden_size=args.sender_hidden,
+            cell=args.sender_cell,
+            max_len=args.max_len,
+        )
+
+    else:
+        raise ValueError(f"Unknown sender model type: {args.sender}")
 
     # use custom LoggingStrategy that stores image IDs
     logging_strategy = VisualRefLoggingStrategy()
@@ -183,7 +235,7 @@ def main(args):
         loss,
         receiver_entropy_coeff=args.receiver_entropy_coeff,
         train_logging_strategy=logging_strategy,
-        test_logging_strategy=logging_strategy
+        test_logging_strategy=logging_strategy,
     )
 
     callbacks = [ConsoleLogger(print_train_loss=True, as_json=False)]
@@ -213,10 +265,16 @@ def main(args):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--debug",
+        "--print-sample-interactions",
         default=False,
         action="store_true",
-        help="Print debug interactions output.",
+        help="Print sample interactions output.",
+    )
+    parser.add_argument(
+        "--print-sample-interactions-images",
+        default=False,
+        action="store_true",
+        help="Print sample interactions output with images.",
     )
     parser.add_argument(
         "--log-frequency",
@@ -229,6 +287,18 @@ def get_args():
         default=100,
         type=int,
         help="Evaluation frequency (number of batches)",
+    )
+    parser.add_argument(
+        "--sender",
+        default="oracle",
+        type=str,
+        choices=["oracle", "functional"],
+        help="Sender model",
+    )
+    parser.add_argument(
+        "--receiver-checkpoint",
+        type=str,
+        help="Checkpoint to load the receiver model from",
     )
 
     # initialize the egg lib
