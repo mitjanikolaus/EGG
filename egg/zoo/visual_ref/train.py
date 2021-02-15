@@ -1,8 +1,6 @@
-#  python -m egg.zoo.visual_ref.train --vocab_size=10 --n_epochs=15 --random_seed=7 --lr=1e-3 --batch_size=32 --optimizer=adam
 import argparse
 import os
 import pickle
-import sys
 
 import torch
 from torch.utils.data import DataLoader
@@ -12,9 +10,8 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
 import egg.core as core
-from egg.core import ConsoleLogger, Callback, Interaction
+from egg.core import ConsoleLogger, Callback, Interaction, SenderReceiverRnnReinforce
 from egg.zoo.visual_ref.dataset import VisualRefCaptionDataset
-from egg.zoo.visual_ref.game import OracleSenderReceiverRnnSupervised
 from egg.zoo.visual_ref.models import (
     VisualRefSpeakerDiscriminativeOracle,
     VisualRefListenerOracle,
@@ -233,11 +230,20 @@ def main(args):
     # use custom LoggingStrategy that stores image IDs
     logging_strategy = VisualRefLoggingStrategy()
 
-    game = OracleSenderReceiverRnnSupervised(
+    # game = OracleSenderReceiverRnnSupervised(
+    #     sender,
+    #     receiver,
+    #     loss,
+    #     receiver_entropy_coeff=args.receiver_entropy_coeff,
+    #     train_logging_strategy=logging_strategy,
+    #     test_logging_strategy=logging_strategy,
+    # )
+    game = SenderReceiverRnnReinforce(
         sender,
         receiver,
         loss,
-        receiver_entropy_coeff=args.receiver_entropy_coeff,
+        sender_entropy_coeff=args.sender_entropy_coeff,
+        receiver_entropy_coeff=0,
         train_logging_strategy=logging_strategy,
         test_logging_strategy=logging_strategy,
     )

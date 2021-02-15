@@ -449,8 +449,11 @@ class VisualRefListenerOracle(nn.Module):
 
         similarities = torch.matmul(stacked_images, torch.unsqueeze(messages_embedded, dim=-1))
 
+        logits = torch.zeros(batch_size).to(device)
+        entropy = logits
+
         # out: scores, logits, entropy
-        return similarities.view(batch_size, -1),  None, None
+        return similarities.view(batch_size, -1),  logits, entropy
 
 
 class VisualRefSenderFunctional(nn.Module):
