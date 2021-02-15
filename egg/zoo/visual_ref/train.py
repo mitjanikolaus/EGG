@@ -241,6 +241,7 @@ def main(args):
         receiver,
         loss,
         sender_entropy_coeff=args.sender_entropy_coeff,
+        length_cost=args.length_cost,
         receiver_entropy_coeff=0,
         train_logging_strategy=logging_strategy,
         test_logging_strategy=logging_strategy,
@@ -308,6 +309,12 @@ def get_args():
         default=0.1,
         type=float,
         help="Sender entropy coefficient",
+    )
+    parser.add_argument(
+        "--length-cost",
+        default=0.0,
+        type=float,
+        help="penalty applied to Sender for each symbol produced",
     )
     parser.add_argument(
         "--receiver-checkpoint",
