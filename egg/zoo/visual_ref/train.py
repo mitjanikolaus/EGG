@@ -205,6 +205,10 @@ def main(args):
         ranking_model.load_state_dict(checkpoint_ranking_model["model_state_dict"])
         receiver = VisualRefListenerOracle(ranking_model)
 
+    if args.freeze_receiver:
+        for param in receiver.parameters():
+            param.requires_grad = False
+
     if args.sender == "oracle":
         sender = VisualRefSpeakerDiscriminativeOracle(
             DATA_PATH, CAPTIONS_FILENAME, args.max_len, vocab
@@ -299,6 +303,12 @@ def get_args():
         "--receiver-checkpoint",
         type=str,
         help="Checkpoint to load the receiver model from",
+    )
+    parser.add_argument(
+        "--freeze-receiver",
+        default=False,
+        action="store_true",
+        help="Freeze receiver weights",
     )
 
     # initialize the egg lib
