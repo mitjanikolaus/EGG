@@ -187,7 +187,7 @@ def main(args):
             fine_tune_resnet=False,
         )
         receiver = VisualRefListenerOracle(ranking_model)
-        receiver.load_state_dict(checkpoint_listener["listener_state_dict"])
+        receiver.load_state_dict(checkpoint_listener["model_state_dict"])
     else:
         checkpoint_ranking_model = torch.load(
             CHECKPOINT_PATH_IMAGE_SENTENCE_RANKING, map_location=device
