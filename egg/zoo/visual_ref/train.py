@@ -165,8 +165,6 @@ def main(args):
     args.sender_embedding = 512  # ???
     args.receiver_embedding = 100  # ???
     args.receiver_hidden = 512  # ???
-    args.sender_entropy_coeff = 0.0  # entropy regularization
-    args.receiver_entropy_coeff = 0.0  # entropy regularization
     args.sender_cell = "lstm"
     args.receiver_cell = "lstm"
     args.vocab_size = len(vocab)
@@ -304,6 +302,12 @@ def get_args():
         type=str,
         choices=["oracle", "functional"],
         help="Sender model",
+    )
+    parser.add_argument(
+        "--sender-entropy-coeff",
+        default=0.1,
+        type=float,
+        help="Sender entropy coefficient",
     )
     parser.add_argument(
         "--receiver-checkpoint",
