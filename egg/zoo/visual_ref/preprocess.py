@@ -181,11 +181,12 @@ def check_args(args):
         help="Folder in which the preprocessed data should be stored",
         default=DATA_PATH,
     )
+    # TODO
     parser.add_argument(
         "--vocabulary-size",
         help="Number of words that should be saved in the vocabulary",
         type=int,
-        default=2685,
+        default=1000,
     )
 
     parsed_args = parser.parse_args(args)
