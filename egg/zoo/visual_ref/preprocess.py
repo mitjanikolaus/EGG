@@ -58,13 +58,13 @@ def show_image(img_data):
 def preprocess_images_and_captions(
     dataset_folder,
     output_folder,
-    vocabulary_size,
+    vocab_min_freq,
 ):
     images = []
     word_freq = Counter()
 
     images_folder = os.path.join(dataset_folder, "RenderedScenes")
-    for scene_id in range(600):#tqdm(range(1002)):
+    for scene_id in tqdm(range(1002)):
         for image_scene_id in range(10):
             img_filename = f"Scene{scene_id}_{image_scene_id}.png"
             img_path = os.path.join(images_folder, img_filename)
@@ -125,9 +125,10 @@ def preprocess_images_and_captions(
     print(f"Most frequent words: {word_freq.most_common(10)}")
 
     # Create vocab
-    vocab = Vocab(word_freq, specials=[TOKEN_PADDING, Vocab.UNK, TOKEN_START, TOKEN_END], max_size=vocabulary_size)
+    vocab = Vocab(word_freq, specials=[TOKEN_PADDING, Vocab.UNK, TOKEN_START, TOKEN_END], min_freq=vocab_min_freq)
     vocab_path = os.path.join(output_folder, VOCAB_FILENAME)
 
+    print(f"Vocab size: {len(vocab)}")
     print("Saving new vocab to {}".format(vocab_path))
     with open(vocab_path, "wb") as file:
         pickle.dump(vocab, file)
@@ -181,12 +182,11 @@ def check_args(args):
         help="Folder in which the preprocessed data should be stored",
         default=DATA_PATH,
     )
-    # TODO
     parser.add_argument(
-        "--vocabulary-size",
-        help="Number of words that should be saved in the vocabulary",
+        "--vocab-min-freq",
+        help="Minimum number of occurrences for a word to be included in the vocabulary.",
         type=int,
-        default=1000,
+        default=5,
     )
 
     parsed_args = parser.parse_args(args)
@@ -199,5 +199,5 @@ if __name__ == "__main__":
     preprocess_images_and_captions(
         parsed_args.dataset_folder,
         parsed_args.output_folder,
-        parsed_args.vocabulary_size,
+        parsed_args.vocab_min_freq,
     )
