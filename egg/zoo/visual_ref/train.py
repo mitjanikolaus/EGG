@@ -167,7 +167,6 @@ def main(args):
     args.receiver_hidden = 512  # ???
     args.sender_cell = "lstm"
     args.receiver_cell = "lstm"
-    args.vocab_size = len(vocab)
     args.max_len = 25
     args.random_seed = 1
 
@@ -215,7 +214,7 @@ def main(args):
         )
         sender = RnnSenderReinforceVisualRef(
             sender,
-            vocab_size=args.vocab_size,
+            vocab_size=len(vocab),
             embed_dim=args.sender_embedding,
             hidden_size=args.sender_hidden,
             cell=args.sender_cell,
